@@ -1,11 +1,14 @@
 {
-  "name": "moneytree",
+  "name": "moneypie",
   "version": "0.0.1",
   "dependencies": {
     "underscore": "~1.5.2",
     "optimist": "~0.6.0",
     "tilde-expansion": "0.0.0",
     "rxjs": "~1.0.10621",
-    "request": "~2.27.0"
+    "request": "~2.27.0",
+    "oauth": "~0.9.10",
+    "open": "0.0.4",
+    "prompt": "~0.2.11"
   }
 }

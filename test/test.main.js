@@ -5,7 +5,7 @@ var mt = require("../moneypie");
 var chai = require("chai");
 var should = chai.should();
 
-describe("moneytree", function(){
+describe("moneypie", function(){
 
     it("calculates asset allocations", function(){
         var allocations = mt.makeAllocations([{
