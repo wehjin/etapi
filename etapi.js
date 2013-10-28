@@ -116,7 +116,6 @@ exports.makeApi = function(consumerKey, consumerSecret) {
 
     function getData(url) {
         return getAccess().selectMany(function(accessToken){
-            console.log("Access token", accessToken);
             return getDataWithAccess(url, accessToken);
         });
     }

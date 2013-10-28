@@ -172,6 +172,25 @@ function presentLogin(data) {
 
 }
 
+function getApiData(api, url) {
+    return readAccessToken()
+        .selectMany(function (accessToken) {
+            return api.getDataWithAccess(url, accessToken);
+        });
+}
+
+function getApiUrl(start, sandbox, end) {
+    return start + (sandbox ? "/sandbox" : "") + end;
+}
+
+function getAccountsList(api) {
+    var url = getApiUrl("https://etwssandbox.etrade.com/accounts", true, "/rest/accountlist.json");
+    return getApiData(api, url)
+        .select(function (data) {
+            return data["json.accountListResponse"].response;
+        });
+}
+
 function presentAccounts(data) {
     var consumerKey = data.etrade.sandbox_key;
     var consumerSecret = data.etrade.sandbox_secret;
@@ -179,16 +198,71 @@ function presentAccounts(data) {
 
     console.log("\nACCOUNTS");
     console.log("=======================")
-    readAccessToken().selectMany(function(accessToken){
-        var url = "https://etwssandbox.etrade.com/accounts/sandbox/rest/accountlist.json";
-        return api.getDataWithAccess(url, accessToken);
-    }).subscribe(function(data){
-        var str = JSON.stringify(data["json.accountListResponse"].response, undefined, 2)
+    getAccountsList(api).subscribe(function(data){
+        var str = JSON.stringify(data, undefined, 2)
         console.log(str);
     }, function(e) {
         console.error(e);
     });
+}
 
+function getAccountSummaries(api) {
+    return getAccountsList(api).selectMany(function (accountsList) {
+        return rx.Observable.fromArray(accountsList);
+    });
+}
+function getAssets(api) {
+    return getAccountSummaries(api)
+        .zip(rx.Observable.interval(400), function (account, count) {
+            return account;
+        })
+        .selectMany(function (account) {
+            var accountId = account.accountId;
+            var url = getApiUrl("https://etwssandbox.etrade.com/accounts", true, "/rest/accountpositions/" + accountId + ".json");
+            return getApiData(api, url);
+        })
+        .select(function (data) {
+            var response = data["json.accountPositionsResponse"].response;
+            return  response ? response : [];
+        })
+        .selectMany(function (data) {
+            return rx.Observable.fromArray(data);
+        })
+        .selectMany(function (position) {
+            //console.log(JSON.stringify(position));
+            var symbol = position.productId.symbol.toLowerCase();
+            var type = position.productId.typeCode.toLowerCase();
+            var value = parseFloat(position.marketValue);
+            var direction = position.longOrShort.toLowerCase();
+            var array = direction === "long" ? [
+                {
+                    symbol: symbol,
+                    value: value,
+                    type: type
+                }
+            ] : [];
+            return rx.Observable.fromArray(array);
+        })
+        .toArray();
+}
+function presentAssets(data) {
+    var consumerKey = data.etrade.sandbox_key;
+    var consumerSecret = data.etrade.sandbox_secret;
+    var api = et.makeApi(consumerKey, consumerSecret);
+
+    console.log("\nASSETS");
+    console.log("=======================")
+    getAssets(api)
+        .subscribe(function(data){
+            var str = JSON.stringify(data, undefined, 2);
+            console.log(str);
+        }, function(e) {
+            console.error(e);
+            process.exit();
+        }, function(){
+            console.log("Done!");
+            process.exit();
+        });
 }
 
 var command = presentAllocationReport;
@@ -200,6 +274,8 @@ if (argv._.length > 0) {
         command = presentLogin;
     } else if (commandName === 'accounts') {
         command = presentAccounts;
+    } else if (commandName === 'assets') {
+        command = presentAssets;
     }
 }
 
