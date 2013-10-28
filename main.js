@@ -211,7 +211,7 @@ function getBalances(api) {
 function getCashAssets(api) {
     return getBalances(api)
         .select(function(balanceResponse){
-            console.log("Balance Response\n", balanceResponse);
+            //console.log("Balance Response\n", balanceResponse);
             var cashValue = parseFloat(balanceResponse.accountBalance.netCash);
             return {
                 type: "cash",
@@ -236,7 +236,7 @@ function getPositions(api) {
         });
 }
 function getAssets(api) {
-    return getPositions(api)
+    var positionAssets = getPositions(api)
         .selectMany(function (position) {
             //console.log(JSON.stringify(position));
             var symbol = position.productId.symbol.toLowerCase();
@@ -251,7 +251,8 @@ function getAssets(api) {
                 }
             ] : [];
             return rx.Observable.fromArray(array);
-        })
+        });
+    return positionAssets.concat(getCashAssets(api))
         .toArray();
 }
 function present(data, title, observableFactory) {
