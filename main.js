@@ -181,40 +181,24 @@ function getApiData(api, url) {
             return api.getDataWithAccess(url, accessToken);
         });
 }
-
-function getAccountsList(api) {
+function getAccounts(api) {
     var url = api.getAccountsUrl("/rest/accountlist.json");
     return getApiData(api, url)
         .select(function (data) {
             return data["json.accountListResponse"].response;
+        })
+        .selectMany(function (accountsList) {
+            return rx.Observable.fromArray(accountsList);
         });
 }
-
-function presentAccounts(data) {
-    console.log("\nACCOUNTS");
-    console.log("=======================")
-    var api = getApi(data);
-    getAccountsList(api).subscribe(function(data){
-        var str = JSON.stringify(data, undefined, 2)
-        console.log(str);
-    }, function(e) {
-        console.error(e);
-    });
-}
-
-function getAccountSummaries(api) {
-    return getAccountsList(api).selectMany(function (accountsList) {
-        return rx.Observable.fromArray(accountsList);
-    });
-}
-function getGatedAccountSummaries(api) {
-    return getAccountSummaries(api)
+function getGatedAccounts(api) {
+    return getAccounts(api)
         .zip(rx.Observable.interval(400), function (account, count) {
             return account;
         });
 }
 function getBalances(api) {
-    return getGatedAccountSummaries(api)
+    return getGatedAccounts(api)
         .selectMany(function (account) {
             var accountId = account.accountId;
             var url = api.getAccountsUrl("/rest/accountbalance/" + accountId + ".json");
@@ -236,8 +220,8 @@ function getCashAssets(api) {
             };
         });
 }
-function getAssets(api) {
-    return getGatedAccountSummaries(api)
+function getPositions(api) {
+    return getGatedAccounts(api)
         .selectMany(function (account) {
             var accountId = account.accountId;
             var url = api.getAccountsUrl("/rest/accountpositions/" + accountId + ".json");
@@ -249,7 +233,10 @@ function getAssets(api) {
         })
         .selectMany(function (data) {
             return rx.Observable.fromArray(data);
-        })
+        });
+}
+function getAssets(api) {
+    return getPositions(api)
         .selectMany(function (position) {
             //console.log(JSON.stringify(position));
             var symbol = position.productId.symbol.toLowerCase();
@@ -267,56 +254,26 @@ function getAssets(api) {
         })
         .toArray();
 }
-function presentAssets(data) {
-    var api = getApi(data);
-
-    console.log("\nASSETS");
+function present(data, title, observableFactory) {
+    console.log("\n" + title.toUpperCase());
     console.log("=======================")
-    getAssets(api)
-        .subscribe(function(data){
+    var api = getApi(data);
+    observableFactory(api)
+        .subscribe(function (data) {
             var str = JSON.stringify(data, undefined, 2);
             console.log(str);
-        }, function(e) {
+        }, function (e) {
             console.error(e);
             process.exit();
-        }, function(){
+        }, function () {
             console.log("Done!");
             process.exit();
         });
 }
-function presentBalances(data) {
-    var api = getApi(data);
-
-    console.log("\nBALANCES");
-    console.log("=======================")
-    getBalances(api)
-        .subscribe(function(data){
-            var str = JSON.stringify(data, undefined, 2);
-            console.log(str);
-        }, function(e) {
-            console.error(e);
-            process.exit();
-        }, function(){
-            console.log("Done!");
-            process.exit();
-        });
-}
-function presentCash(data) {
-    var api = getApi(data);
-
-    console.log("\nCASH");
-    console.log("=======================")
-    getCashAssets(api)
-        .subscribe(function(data){
-            var str = JSON.stringify(data, undefined, 2);
-            console.log(str);
-        }, function(e) {
-            console.error(e);
-            process.exit();
-        }, function(){
-            console.log("Done!");
-            process.exit();
-        });
+function getPresenter(title, observableFactory) {
+    return function(data) {
+        present(data, title, observableFactory);
+    }
 }
 
 var command = presentAllocationReport;
@@ -327,13 +284,15 @@ if (argv._.length > 0) {
     } else if (commandName === 'login') {
         command = presentLogin;
     } else if (commandName === 'accounts') {
-        command = presentAccounts;
-    } else if (commandName === 'assets') {
-        command = presentAssets;
+        command = getPresenter("Accounts", getAccounts);
     } else if (commandName === 'balances') {
-        command = presentBalances;
+        command = getPresenter("Balances", getBalances);
+    } else if (commandName === 'positions') {
+        command = getPresenter("Positions", getPositions);
     } else if (commandName === 'cash') {
-        command = presentCash;
+        command = getPresenter("Cash", getCashAssets);
+    } else if (commandName === 'assets') {
+        command = getPresenter("Assets", getAssets);
     }
 }
 
