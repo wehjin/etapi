@@ -213,6 +213,29 @@ function getGatedAccountSummaries(api) {
             return account;
         });
 }
+function getBalances(api) {
+    return getGatedAccountSummaries(api)
+        .selectMany(function (account) {
+            var accountId = account.accountId;
+            var url = api.getAccountsUrl("/rest/accountbalance/" + accountId + ".json");
+            return getApiData(api, url);
+        })
+        .select(function (apiResponse) {
+            return apiResponse["json.accountBalanceResponse"];
+        });
+}
+function getCashAssets(api) {
+    return getBalances(api)
+        .select(function(balanceResponse){
+            console.log("Balance Response\n", balanceResponse);
+            var cashValue = parseFloat(balanceResponse.accountBalance.netCash);
+            return {
+                type: "cash",
+                symbol: "$",
+                value: cashValue
+            };
+        });
+}
 function getAssets(api) {
     return getGatedAccountSummaries(api)
         .selectMany(function (account) {
@@ -266,7 +289,24 @@ function presentBalances(data) {
 
     console.log("\nBALANCES");
     console.log("=======================")
-    getGatedAccountSummaries(api)
+    getBalances(api)
+        .subscribe(function(data){
+            var str = JSON.stringify(data, undefined, 2);
+            console.log(str);
+        }, function(e) {
+            console.error(e);
+            process.exit();
+        }, function(){
+            console.log("Done!");
+            process.exit();
+        });
+}
+function presentCash(data) {
+    var api = getApi(data);
+
+    console.log("\nCASH");
+    console.log("=======================")
+    getCashAssets(api)
         .subscribe(function(data){
             var str = JSON.stringify(data, undefined, 2);
             console.log(str);
@@ -292,6 +332,8 @@ if (argv._.length > 0) {
         command = presentAssets;
     } else if (commandName === 'balances') {
         command = presentBalances;
+    } else if (commandName === 'cash') {
+        command = presentCash;
     }
 }
 
