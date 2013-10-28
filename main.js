@@ -81,13 +81,18 @@ function presentAllocationReport(data) {
         });
 }
 
-function presentUpdate(data) {
-    console.log("\nUpdate\n===========================");
+function getApi(data) {
+    var sandbox = true;
     var consumerKey = data.etrade.sandbox_key;
     var consumerSecret = data.etrade.sandbox_secret;
-    var api = et.makeApi(consumerKey, consumerSecret);
+    var api = et.makeApi(consumerKey, consumerSecret, sandbox);
+    return api;
+}
 
-    var url = "https://etwssandbox.etrade.com/accounts/sandbox/rest/accountlist.json";
+function presentUpdate(data) {
+    console.log("\nUpdate\n===========================");
+    var api = getApi(data);
+    var url = api.getAccountsUrl("/rest/accountlist.json");
     api.getData(url).subscribe(function(data){
         var str = JSON.stringify(data, undefined, 2)
         console.log("Data\n", str);
@@ -158,9 +163,7 @@ function readAccessToken() {
 }
 
 function presentLogin(data) {
-    var consumerKey = data.etrade.sandbox_key;
-    var consumerSecret = data.etrade.sandbox_secret;
-    var api = et.makeApi(consumerKey, consumerSecret);
+    var api = getApi(data);
     api.getAccess().selectMany(function(accessToken){
         console.log("Access Token:", accessToken);
         return writeAccessToken(accessToken);
@@ -179,12 +182,8 @@ function getApiData(api, url) {
         });
 }
 
-function getApiUrl(start, sandbox, end) {
-    return start + (sandbox ? "/sandbox" : "") + end;
-}
-
 function getAccountsList(api) {
-    var url = getApiUrl("https://etwssandbox.etrade.com/accounts", true, "/rest/accountlist.json");
+    var url = api.getAccountsUrl("/rest/accountlist.json");
     return getApiData(api, url)
         .select(function (data) {
             return data["json.accountListResponse"].response;
@@ -192,12 +191,9 @@ function getAccountsList(api) {
 }
 
 function presentAccounts(data) {
-    var consumerKey = data.etrade.sandbox_key;
-    var consumerSecret = data.etrade.sandbox_secret;
-    var api = et.makeApi(consumerKey, consumerSecret);
-
     console.log("\nACCOUNTS");
     console.log("=======================")
+    var api = getApi(data);
     getAccountsList(api).subscribe(function(data){
         var str = JSON.stringify(data, undefined, 2)
         console.log(str);
@@ -211,14 +207,17 @@ function getAccountSummaries(api) {
         return rx.Observable.fromArray(accountsList);
     });
 }
-function getAssets(api) {
+function getGatedAccountSummaries(api) {
     return getAccountSummaries(api)
         .zip(rx.Observable.interval(400), function (account, count) {
             return account;
-        })
+        });
+}
+function getAssets(api) {
+    return getGatedAccountSummaries(api)
         .selectMany(function (account) {
             var accountId = account.accountId;
-            var url = getApiUrl("https://etwssandbox.etrade.com/accounts", true, "/rest/accountpositions/" + accountId + ".json");
+            var url = api.getAccountsUrl("/rest/accountpositions/" + accountId + ".json");
             return getApiData(api, url);
         })
         .select(function (data) {
@@ -246,13 +245,28 @@ function getAssets(api) {
         .toArray();
 }
 function presentAssets(data) {
-    var consumerKey = data.etrade.sandbox_key;
-    var consumerSecret = data.etrade.sandbox_secret;
-    var api = et.makeApi(consumerKey, consumerSecret);
+    var api = getApi(data);
 
     console.log("\nASSETS");
     console.log("=======================")
     getAssets(api)
+        .subscribe(function(data){
+            var str = JSON.stringify(data, undefined, 2);
+            console.log(str);
+        }, function(e) {
+            console.error(e);
+            process.exit();
+        }, function(){
+            console.log("Done!");
+            process.exit();
+        });
+}
+function presentBalances(data) {
+    var api = getApi(data);
+
+    console.log("\nBALANCES");
+    console.log("=======================")
+    getGatedAccountSummaries(api)
         .subscribe(function(data){
             var str = JSON.stringify(data, undefined, 2);
             console.log(str);
@@ -276,6 +290,8 @@ if (argv._.length > 0) {
         command = presentAccounts;
     } else if (commandName === 'assets') {
         command = presentAssets;
+    } else if (commandName === 'balances') {
+        command = presentBalances;
     }
 }
 

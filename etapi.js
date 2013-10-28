@@ -79,10 +79,12 @@ function getAccessToken(oauth, accessCredentials) {
     });
 }
 
-exports.makeApi = function(consumerKey, consumerSecret) {
+exports.makeApi = function(consumerKey, consumerSecret, sandbox) {
     var tokenUrl = "https://etws.etrade.com/oauth/request_token";
     var accessUrl = "https://etws.etrade.com/oauth/access_token";
     var authUrl = "https://us.etrade.com/e/t/etws/authorize?key=" + encodeURIComponent(consumerKey);
+    var dataHost = sandbox ? "https://etwssandbox.etrade.com" : "https://etws.etrade.com";
+    var accountsUrl = dataHost + "/accounts" + (sandbox ? "/sandbox" : "");
 
     var oauth = new OAuth.OAuth(
         tokenUrl, accessUrl, consumerKey, consumerSecret,
@@ -123,6 +125,9 @@ exports.makeApi = function(consumerKey, consumerSecret) {
     return {
         getData: getData,
         getAccess: getAccess,
-        getDataWithAccess: getDataWithAccess
+        getDataWithAccess: getDataWithAccess,
+        getAccountsUrl: function (tail) {
+            return accountsUrl  + tail;
+        }
     }
 };
