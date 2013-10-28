@@ -89,18 +89,6 @@ function getApi(data) {
     return api;
 }
 
-function presentUpdate(data) {
-    console.log("\nUpdate\n===========================");
-    var api = getApi(data);
-    var url = api.getAccountsUrl("/rest/accountlist.json");
-    api.getData(url).subscribe(function(data){
-        var str = JSON.stringify(data, undefined, 2)
-        console.log("Data\n", str);
-    }, function(e) {
-        console.error(e);
-    });
-}
-
 function writeJSONFile(path, data, mode) {
     return rx.Observable.create(function(observer){
         fs.writeFile(path, JSON.stringify(data, undefined, 2), {mode: mode}, function(err) {
@@ -255,7 +243,7 @@ function getAssets(api) {
     return positionAssets.concat(getCashAssets(api))
         .toArray();
 }
-function present(data, title, observableFactory) {
+function presentJson(data, title, observableFactory) {
     console.log("\n" + title.toUpperCase());
     console.log("=======================")
     var api = getApi(data);
@@ -271,29 +259,27 @@ function present(data, title, observableFactory) {
             process.exit();
         });
 }
-function getPresenter(title, observableFactory) {
+function getJsonPresenter(title, observableFactory) {
     return function(data) {
-        present(data, title, observableFactory);
+        presentJson(data, title, observableFactory);
     }
 }
 
 var command = presentAllocationReport;
 if (argv._.length > 0) {
     var commandName = argv._[0];
-    if (commandName === 'update') {
-        command = presentUpdate;
-    } else if (commandName === 'login') {
+    if (commandName === 'login') {
         command = presentLogin;
     } else if (commandName === 'accounts') {
-        command = getPresenter("Accounts", getAccounts);
+        command = getJsonPresenter("Accounts", getAccounts);
     } else if (commandName === 'balances') {
-        command = getPresenter("Balances", getBalances);
+        command = getJsonPresenter("Balances", getBalances);
     } else if (commandName === 'positions') {
-        command = getPresenter("Positions", getPositions);
+        command = getJsonPresenter("Positions", getPositions);
     } else if (commandName === 'cash') {
-        command = getPresenter("Cash", getCashAssets);
+        command = getJsonPresenter("Cash", getCashAssets);
     } else if (commandName === 'assets') {
-        command = getPresenter("Assets", getAssets);
+        command = getJsonPresenter("Assets", getAssets);
     }
 }
 
