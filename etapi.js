@@ -100,25 +100,30 @@ exports.makeApi = function(consumerKey, consumerSecret) {
             });
     }
 
+    function getDataWithAccess(url, accessToken) {
+        return rx.Observable.create(function(observer){
+            oauth.get(url, accessToken.accessToken, accessToken.accessTokenSecret, function(err, data) {
+                if (err) {
+                    observer.onError(err);
+                } else {
+                    observer.onNext(JSON.parse(data));
+                    observer.onCompleted();
+                }
+            });
+            return function(){};
+        });
+    }
+
     function getData(url) {
         return getAccess().selectMany(function(accessToken){
             console.log("Access token", accessToken);
-            return rx.Observable.create(function(observer){
-                oauth.get(url, accessToken.accessToken, accessToken.accessTokenSecret, function(err, data) {
-                    if (err) {
-                        observer.onError(err);
-                    } else {
-                        observer.onNext(JSON.parse(data));
-                        observer.onCompleted();
-                    }
-                });
-                return function(){};
-            });
+            return getDataWithAccess(url, accessToken);
         });
     }
 
     return {
         getData: getData,
-        getAccess: getAccess
+        getAccess: getAccess,
+        getDataWithAccess: getDataWithAccess
     }
 };

@@ -13,6 +13,8 @@ var dataFilePath = "~/.moneypie/data.json";
 dataFilePath = argv.f ? argv.f : dataFilePath;
 console.log("Data file path: ", dataFilePath);
 
+var configFolderPath = "~/.moneypie";
+
 function showable(amount, before, after) {
     before = before ? before : "";
     after = after ? after : "";
@@ -94,11 +96,110 @@ function presentUpdate(data) {
     });
 }
 
+function writeJSONFile(path, data, mode) {
+    return rx.Observable.create(function(observer){
+        fs.writeFile(path, JSON.stringify(data, undefined, 2), {mode: mode}, function(err) {
+            if (err) {
+                observer.onError(err);
+            } else {
+                observer.onNext(data);
+                observer.onCompleted();
+            }
+        });
+        return function(){};
+    });
+}
+
+function readJSONFile(path) {
+    return rx.Observable.create(function(observer){
+        fs.readFile(path, function(err, data){
+            if (err) {
+                observer.onError(err);
+            } else {
+                var result = JSON.parse(data);
+                observer.onNext(result);
+                observer.onCompleted();
+            }
+        });
+        return function(){};
+    });
+}
+
+function getConfigFolderPath() {
+    var configFolderPath = "~/.moneypie";
+    return rx.Observable.create(function(observer){
+        tilde(configFolderPath, function(expandedPath) {
+            if (expandedPath == configFolderPath) {
+                observer.onError("Failed to expand " + configFolderPath);
+            } else {
+                observer.onNext(expandedPath);
+                observer.onCompleted();
+            }
+        });
+        return function(){};
+    });
+}
+
+function getAccessPath() {
+    return getConfigFolderPath().select(function (folderPath) {
+        return folderPath + "/access.json";
+    });
+}
+function writeAccessToken(accessToken) {
+    return getAccessPath().selectMany(function (accessPath) {
+        return writeJSONFile(accessPath, accessToken, 0600);
+    });
+}
+
+function readAccessToken() {
+    return getAccessPath().selectMany(function(accessPath){
+        return readJSONFile(accessPath);
+    });
+}
+
+function presentLogin(data) {
+    var consumerKey = data.etrade.sandbox_key;
+    var consumerSecret = data.etrade.sandbox_secret;
+    var api = et.makeApi(consumerKey, consumerSecret);
+    api.getAccess().selectMany(function(accessToken){
+        console.log("Access Token:", accessToken);
+        return writeAccessToken(accessToken);
+    }).subscribe(function(accessToken){
+            console.log('Logged in');
+    }, function(e){
+       console.error(e);
+    });
+
+}
+
+function presentAccounts(data) {
+    var consumerKey = data.etrade.sandbox_key;
+    var consumerSecret = data.etrade.sandbox_secret;
+    var api = et.makeApi(consumerKey, consumerSecret);
+
+    console.log("\nACCOUNTS");
+    console.log("=======================")
+    readAccessToken().selectMany(function(accessToken){
+        var url = "https://etwssandbox.etrade.com/accounts/sandbox/rest/accountlist.json";
+        return api.getDataWithAccess(url, accessToken);
+    }).subscribe(function(data){
+        var str = JSON.stringify(data["json.accountListResponse"].response, undefined, 2)
+        console.log(str);
+    }, function(e) {
+        console.error(e);
+    });
+
+}
+
 var command = presentAllocationReport;
 if (argv._.length > 0) {
     var commandName = argv._[0];
     if (commandName === 'update') {
         command = presentUpdate;
+    } else if (commandName === 'login') {
+        command = presentLogin;
+    } else if (commandName === 'accounts') {
+        command = presentAccounts;
     }
 }
 
