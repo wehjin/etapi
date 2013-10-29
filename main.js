@@ -279,7 +279,7 @@ function getDataPresenter(title, observableFromData) {
     }
 }
 
-function getPresentEtrade(title, observableFromEtradeApi) {
+function getEtradePresenter(title, observableFromEtradeApi) {
     return getDataPresenter(title, function(data) {
         var api = getEtradeApi(data);
         return observableFromEtradeApi(api);
@@ -292,15 +292,15 @@ if (argv._.length > 0) {
     if (commandName === 'login') {
         command = presentLogin;
     } else if (commandName === 'accounts') {
-        command = getPresentEtrade("Accounts", getAccounts);
+        command = getEtradePresenter("Accounts", getAccounts);
     } else if (commandName === 'balances') {
-        command = getPresentEtrade("Balances", getBalances);
+        command = getEtradePresenter("Balances", getBalances);
     } else if (commandName === 'positions') {
-        command = getPresentEtrade("Positions", getPositions);
+        command = getEtradePresenter("Positions", getPositions);
     } else if (commandName === 'cash') {
-        command = getPresentEtrade("Cash", getCashAssets);
+        command = getEtradePresenter("Cash", getCashAssets);
     } else if (commandName === 'assets') {
-        command = getPresentEtrade("Assets", getAssets);
+        command = getEtradePresenter("Assets", getAssets);
     } else if (commandName === 'portfolio') {
         command = getDataPresenter("Portfolio", getPortfolioAssets);
     }
