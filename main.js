@@ -8,6 +8,7 @@ var tilde = require('tilde-expansion');
 var _ = require('underscore');
 var rx = require('rxjs');
 var et = require('./etapi');
+var request = require('request');
 
 var dataFilePath = "~/.moneypie/data.json";
 dataFilePath = argv.f ? argv.f : dataFilePath;
@@ -21,48 +22,59 @@ function showable(amount, before, after) {
     return before + amount.toFixed(2) + after;
 }
 
-function presentAllocationReport(data) {
-    var allocations = mt.makeAllocations(data.allocations);
-    var assignments = data.assignments;
-    var shares = data.shares;
+function getPortfolioAssets(data) {
+    var portfolio = data.accounts.portfolio;
+    var shares = portfolio.shares;
     var symbols = _.keys(shares);
-    rx.Observable.fromArray(symbols).select(function (symbol) {
-        return rx.Observable.create(function (observer) {
-            var shareCount = shares[symbol];
-            if (symbol == "$") {
-                observer.onNext({
-                    symbol: symbol,
-                    price: 1,
-                    shares: shareCount
-                });
-                observer.onCompleted();
-            } else {
-                var phrase = "select finance.symbol, finance.last.data from google.igoogle.stock where stock = '" + symbol + "'";
-                var selectParameter = encodeURIComponent(phrase);
-                var url = "http://query.yahooapis.com/v1/public/yql?q=" + selectParameter + "&format=json&env=store%3A%2F%2Fdatatables.org%2Falltableswithkeys&callback=";
-                request(url, function (error, response, body) {
-                    if (!error && response.statusCode == 200) {
-                        body = JSON.parse(body);
-                        var price = parseFloat(body.query.results.xml_api_reply.finance.last.data);
-                        observer.onNext({
-                            symbol: symbol,
-                            price: price,
-                            shares: shareCount
-                        });
-                        observer.onCompleted();
-                    } else {
-                        observer.onError(error || response.statusText);
-                    }
-                });
-            }
-            return function () {
-            };
-        });
-    }).mergeObservable().select(function (asset) {
+    var assetsFromSymbols = rx.Observable.fromArray(symbols)
+        .select(function (symbol) {
+            return rx.Observable.create(function (observer) {
+                var shareCount = shares[symbol];
+                if (symbol == "$") {
+                    observer.onNext({
+                        symbol: symbol,
+                        price: 1,
+                        shares: shareCount
+                    });
+                    observer.onCompleted();
+                } else {
+                    var phrase = "select finance.symbol, finance.last.data from google.igoogle.stock where stock = '" + symbol + "'";
+                    var selectParameter = encodeURIComponent(phrase);
+                    var url = "http://query.yahooapis.com/v1/public/yql?q=" + selectParameter + "&format=json&env=store%3A%2F%2Fdatatables.org%2Falltableswithkeys&callback=";
+                    request(url, function (error, response, body) {
+                        if (!error && response.statusCode == 200) {
+                            body = JSON.parse(body);
+                            var price = parseFloat(body.query.results.xml_api_reply.finance.last.data);
+                            observer.onNext({
+                                symbol: symbol,
+                                price: price,
+                                shares: shareCount
+                            });
+                            observer.onCompleted();
+                        } else {
+                            observer.onError(error || response.statusText);
+                        }
+                    });
+                }
+                return function () {};
+            });
+        })
+        .mergeObservable()
+        .select(function (asset) {
             var value = asset.price * asset.shares;
             asset.value = parseFloat(value.toFixed(2));
             return asset;
-        }).toArray().subscribe(function (assets) {
+        });
+    return assetsFromSymbols;
+}
+
+function presentAllocationReport(data) {
+    var allocations = mt.makeAllocations(data.allocations);
+    var assignments = data.assignments;
+    var assetsFromSymbols = getPortfolioAssets(data);
+    assetsFromSymbols
+        .toArray()
+        .subscribe(function (assets) {
             var report = mt.makeReport(allocations, assets, assignments);
             console.log("======================");
             console.log("TODAY", ":", new Date());
@@ -81,10 +93,11 @@ function presentAllocationReport(data) {
         });
 }
 
-function getApi(data) {
+function getEtradeApi(data) {
     var sandbox = true;
-    var consumerKey = data.etrade.sandbox_key;
-    var consumerSecret = data.etrade.sandbox_secret;
+    var etrade = data.accounts.etrade;
+    var consumerKey = etrade.sandbox_key;
+    var consumerSecret = etrade.sandbox_secret;
     var api = et.makeApi(consumerKey, consumerSecret, sandbox);
     return api;
 }
@@ -151,15 +164,15 @@ function readAccessToken() {
 }
 
 function presentLogin(data) {
-    var api = getApi(data);
+    var api = getEtradeApi(data);
     api.getAccess().selectMany(function(accessToken){
         console.log("Access Token:", accessToken);
         return writeAccessToken(accessToken);
     }).subscribe(function(accessToken){
             console.log('Logged in');
-    }, function(e){
-       console.error(e);
-    });
+        }, function(e){
+            console.error(e);
+        });
 
 }
 
@@ -243,26 +256,34 @@ function getAssets(api) {
     return positionAssets.concat(getCashAssets(api))
         .toArray();
 }
-function presentJson(data, title, observableFactory) {
+
+function presentObservable(title, observable) {
     console.log("\n" + title.toUpperCase());
-    console.log("=======================")
-    var api = getApi(data);
-    observableFactory(api)
-        .subscribe(function (data) {
-            var str = JSON.stringify(data, undefined, 2);
-            console.log(str);
-        }, function (e) {
-            console.error(e);
-            process.exit();
-        }, function () {
-            console.log("Done!");
-            process.exit();
-        });
+    console.log("=======================");
+    observable.subscribe(function (data) {
+        var str = JSON.stringify(data, undefined, 2);
+        console.log(str);
+    }, function (e) {
+        console.error(e);
+        process.exit();
+    }, function () {
+        console.log("Done!");
+        process.exit();
+    });
 }
-function getJsonPresenter(title, observableFactory) {
+
+function getDataPresenter(title, observableFromData) {
     return function(data) {
-        presentJson(data, title, observableFactory);
+        var observable = observableFromData(data);
+        presentObservable(title, observable);
     }
+}
+
+function getPresentEtrade(title, observableFromEtradeApi) {
+    return getDataPresenter(title, function(data) {
+        var api = getEtradeApi(data);
+        return observableFromEtradeApi(api);
+    });
 }
 
 var command = presentAllocationReport;
@@ -271,15 +292,17 @@ if (argv._.length > 0) {
     if (commandName === 'login') {
         command = presentLogin;
     } else if (commandName === 'accounts') {
-        command = getJsonPresenter("Accounts", getAccounts);
+        command = getPresentEtrade("Accounts", getAccounts);
     } else if (commandName === 'balances') {
-        command = getJsonPresenter("Balances", getBalances);
+        command = getPresentEtrade("Balances", getBalances);
     } else if (commandName === 'positions') {
-        command = getJsonPresenter("Positions", getPositions);
+        command = getPresentEtrade("Positions", getPositions);
     } else if (commandName === 'cash') {
-        command = getJsonPresenter("Cash", getCashAssets);
+        command = getPresentEtrade("Cash", getCashAssets);
     } else if (commandName === 'assets') {
-        command = getJsonPresenter("Assets", getAssets);
+        command = getPresentEtrade("Assets", getAssets);
+    } else if (commandName === 'portfolio') {
+        command = getDataPresenter("Portfolio", getPortfolioAssets);
     }
 }
 
