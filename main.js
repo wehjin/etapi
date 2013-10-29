@@ -19,7 +19,8 @@ var configFolderPath = "~/.moneypie";
 function showable(amount, before, after) {
     before = before ? before : "";
     after = after ? after : "";
-    return before + amount.toFixed(2) + after;
+    var justAmount = amount ? amount.toFixed(2) : 0;
+    return before + justAmount + after;
 }
 
 function getPortfolioAssets(data) {
@@ -76,15 +77,15 @@ function getPortfolioAssets(data) {
 function presentAllocationReport(data) {
     var allocations = mt.makeAllocations(data.allocations);
     var assignments = data.assignments;
-    var assetsFromSymbols = getAssets(data);
-    assetsFromSymbols
+    getAssets(data)
         .toArray()
         .subscribe(function (assets) {
             var report = mt.makeReport(allocations, assets, assignments);
             console.log("======================");
             console.log("TODAY", ":", new Date());
             console.log("TOTAL VALUE", ":", showable(report.assetsValue, "$"));
-            console.log("UNASSIGNED", ":", showable(report.unassignedValue, "$"));
+            console.log("\nUNASSIGNED", ":", showable(report.unassignedValue, "$"));
+            console.log(JSON.stringify(report.unassignedSymbols));
             console.log("\nOVERFLOWS");
             _.each(allocations, function (allocation) {
                 var name = allocation.name;

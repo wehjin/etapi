@@ -2,6 +2,7 @@
  * Created by wehjin on 10/26/13.
  */
 var _ = require('underscore');
+var sets = require('simplesets');
 
 function Allocation(name, show, fractionAll) {
     this.name = name;
@@ -23,6 +24,15 @@ exports.makeReport = function(allocations, assets, assignments) {
     var totalValue = _.reduce(assets, function(sum, asset){
         return sum + asset.value;
     }, 0);
+
+    var unassignedSymbols = _.reduce(assets, function(unassigned, asset){
+        var allocationName = assignments[asset.symbol];
+        if (!allocationName) {
+            unassigned.push(asset.symbol);
+        }
+        return unassigned;
+    }, []);
+    var unassignedSet = new sets.Set(unassignedSymbols);
 
     var allocationTotals = _.reduce(assets, function(totals, asset){
         var allocationName = assignments[asset.symbol];
@@ -56,6 +66,7 @@ exports.makeReport = function(allocations, assets, assignments) {
     return {
         assetsValue: totalValue,
         unassignedValue: justUnassignedTotal,
+        unassignedSymbols: unassignedSet.array(),
         allocationFractions: allocationFractions,
         allocationOverflows: allocationOverflows
     };
