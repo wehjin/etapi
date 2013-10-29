@@ -24,6 +24,11 @@ function showable(amount, before, after) {
 
 function getPortfolioAssets(data) {
     var portfolio = data.accounts.portfolio;
+    var include = portfolio.include;
+    if (!include) {
+        return rx.Observable.empty();
+    }
+
     var shares = portfolio.shares;
     var symbols = _.keys(shares);
     var assetsFromSymbols = rx.Observable.fromArray(symbols)
@@ -71,7 +76,7 @@ function getPortfolioAssets(data) {
 function presentAllocationReport(data) {
     var allocations = mt.makeAllocations(data.allocations);
     var assignments = data.assignments;
-    var assetsFromSymbols = getPortfolioAssets(data);
+    var assetsFromSymbols = getAssets(data);
     assetsFromSymbols
         .toArray()
         .subscribe(function (assets) {
@@ -90,6 +95,11 @@ function presentAllocationReport(data) {
                     "->",
                     showable(report.allocationOverflows[name] * 100, "", "%"));
             });
+        }, function(e) {
+            console.error(e);
+            process.exit();
+        }, function(){
+            process.exit();
         });
 }
 
@@ -236,7 +246,7 @@ function getPositions(api) {
             return rx.Observable.fromArray(data);
         });
 }
-function getAssets(api) {
+function getEtradeAssets(api) {
     var positionAssets = getPositions(api)
         .selectMany(function (position) {
             //console.log(JSON.stringify(position));
@@ -253,8 +263,21 @@ function getAssets(api) {
             ] : [];
             return rx.Observable.fromArray(array);
         });
-    return positionAssets.concat(getCashAssets(api))
-        .toArray();
+    return positionAssets.concat(getCashAssets(api));
+}
+
+function getEtradeAssetsFromData(data) {
+    var include = data.accounts.etrade.include;
+    if (!include) {
+        return rx.Observable.empty();
+    }
+    var api = getEtradeApi(data);
+    return getEtradeAssets(api);
+}
+
+function getAssets(data) {
+    return getPortfolioAssets(data)
+        .concat(getEtradeAssetsFromData(data));
 }
 
 function presentObservable(title, observable) {
@@ -286,7 +309,7 @@ function getEtradePresenter(title, observableFromEtradeApi) {
     });
 }
 
-var command = presentAllocationReport;
+var command;
 if (argv._.length > 0) {
     var commandName = argv._[0];
     if (commandName === 'login') {
@@ -299,10 +322,12 @@ if (argv._.length > 0) {
         command = getEtradePresenter("Positions", getPositions);
     } else if (commandName === 'cash') {
         command = getEtradePresenter("Cash", getCashAssets);
-    } else if (commandName === 'assets') {
-        command = getEtradePresenter("Assets", getAssets);
     } else if (commandName === 'portfolio') {
         command = getDataPresenter("Portfolio", getPortfolioAssets);
+    } else if (commandName === 'assets') {
+        command = getDataPresenter("Assets", getAssets);
+    } else if (commandName === 'report') {
+        command = presentAllocationReport;
     }
 }
 
