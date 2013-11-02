@@ -105,10 +105,10 @@ function presentAllocationReport(data) {
 }
 
 function getEtradeApi(data) {
-    var sandbox = true;
     var etrade = data.accounts.etrade;
-    var consumerKey = etrade.sandbox_key;
-    var consumerSecret = etrade.sandbox_secret;
+    var sandbox = etrade.mode != "production";
+    var consumerKey = sandbox ? etrade.sandbox_key : etrade.production_key;
+    var consumerSecret = sandbox ? etrade.sandbox_secret : etrade.production_secret;
     var api = et.makeApi(consumerKey, consumerSecret, sandbox);
     return api;
 }
