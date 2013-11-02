@@ -3,13 +3,13 @@
  */
 var rx = require('rxjs');
 var request = require('request');
-var OAuth = require('OAuth');
+var OAuth = require('oauth');
 var open = require('open');
 var prompt = require('prompt');
 
 function getRequestToken(oauth) {
-    return rx.Observable.create(function(observer){
-        oauth.getOAuthRequestToken(function(err, oauth_token, oauth_token_secret, results){
+    return rx.Observable.create(function (observer) {
+        oauth.getOAuthRequestToken(function (err, oauth_token, oauth_token_secret, results) {
             if (err) {
                 observer.onError(err);
             } else {
@@ -21,12 +21,13 @@ function getRequestToken(oauth) {
                 observer.onCompleted();
             }
         });
-        return function(){};
+        return function () {
+        };
     });
 }
 
 function getVerifier() {
-    return rx.Observable.create(function(observer){
+    return rx.Observable.create(function (observer) {
         prompt.start();
         prompt.get(['verifier'], function (err, result) {
             if (err) {
@@ -36,31 +37,33 @@ function getVerifier() {
                 observer.onCompleted();
             }
         });
-        return function(){};
+        return function () {
+        };
     });
 }
 
 function getAuthToken(authUrl, authCredentials) {
     var authUrlWithToken = authUrl + "&token=" + encodeURIComponent(authCredentials.requestToken);
     open(authUrlWithToken);
-    return getVerifier().select(function (verifier) {
-        if (!verifier) {
-            throw "invalid verifier code";
-        }
-        return {
-            requestCredentials: authCredentials,
-            verifier: verifier
-        };
-    });
+    return getVerifier()
+        .select(function (verifier) {
+            if (!verifier) {
+                throw "invalid verifier code";
+            }
+            return {
+                requestCredentials: authCredentials,
+                verifier: verifier
+            };
+        });
 }
 
 function getAccessToken(oauth, accessCredentials) {
-    return rx.Observable.create(function(observer){
+    return rx.Observable.create(function (observer) {
         oauth.getOAuthAccessToken(
             accessCredentials.requestCredentials.requestToken,
             accessCredentials.requestCredentials.requestTokenSecret,
             accessCredentials.verifier,
-            function(err, oauth_access_token, oauth_access_token_secret, results) {
+            function (err, oauth_access_token, oauth_access_token_secret, results) {
                 if (err) {
                     observer.onError(err);
                 } else {
@@ -75,11 +78,12 @@ function getAccessToken(oauth, accessCredentials) {
                 }
             }
         );
-        return function(){};
+        return function () {
+        };
     });
 }
 
-exports.makeApi = function(consumerKey, consumerSecret, sandbox) {
+exports.makeApi = function (consumerKey, consumerSecret, sandbox) {
     var tokenUrl = "https://etws.etrade.com/oauth/request_token";
     var accessUrl = "https://etws.etrade.com/oauth/access_token";
     var authUrl = "https://us.etrade.com/e/t/etws/authorize?key=" + encodeURIComponent(consumerKey);
@@ -91,43 +95,42 @@ exports.makeApi = function(consumerKey, consumerSecret, sandbox) {
         '1.0', "oob", 'HMAC-SHA1'
     );
 
-    function getAccess() {
-        return getRequestToken(oauth)
-            .selectMany(function(requestToken){
-                console.log("Request token", requestToken);
-                return getAuthToken(authUrl, requestToken);
-            }).selectMany(function(authToken){
-                console.log("Auth token", authToken);
-                return getAccessToken(oauth, authToken);
-            });
-    }
-
-    function getDataWithAccess(url, accessToken) {
-        return rx.Observable.create(function(observer){
-            oauth.get(url, accessToken.accessToken, accessToken.accessTokenSecret, function(err, data) {
-                if (err) {
-                    observer.onError(err);
-                } else {
-                    observer.onNext(JSON.parse(data));
-                    observer.onCompleted();
-                }
-            });
-            return function(){};
-        });
-    }
-
-    function getData(url) {
-        return getAccess().selectMany(function(accessToken){
-            return getDataWithAccess(url, accessToken);
-        });
-    }
-
     return {
-        getData: getData,
-        getAccess: getAccess,
-        getDataWithAccess: getDataWithAccess,
+
+        getAccess: function() {
+            return getRequestToken(oauth)
+                .selectMany(function (requestToken) {
+                    console.log("Request token", requestToken);
+                    return getAuthToken(authUrl, requestToken);
+                }).selectMany(function (authToken) {
+                    console.log("Auth token", authToken);
+                    return getAccessToken(oauth, authToken);
+                });
+        },
+
+        getDataWithAccess: function (url, accessToken) {
+            return rx.Observable.create(function (observer) {
+                oauth.get(url, accessToken.accessToken, accessToken.accessTokenSecret, function (err, data) {
+                    if (err) {
+                        observer.onError(err);
+                    } else {
+                        observer.onNext(JSON.parse(data));
+                        observer.onCompleted();
+                    }
+                });
+                return function () {
+                };
+            });
+        },
+
+        getData: function(url) {
+            return getAccess().selectMany(function (accessToken) {
+                return getDataWithAccess(url, accessToken);
+            });
+        },
+
         getAccountsUrl: function (tail) {
-            return accountsUrl  + tail;
+            return accountsUrl + tail;
         }
     }
 };

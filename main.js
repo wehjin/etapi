@@ -7,7 +7,7 @@ var fs = require('fs');
 var tilde = require('tilde-expansion');
 var _ = require('underscore');
 var rx = require('rxjs');
-var et = require('./etapi');
+var et = require('etapi');
 var request = require('request');
 
 var dataFilePath = "~/.moneypie/data.json";
