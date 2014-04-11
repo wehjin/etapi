@@ -11,10 +11,10 @@
   },
   "main": "etapi.js",
   "dependencies": {
-    "rxjs": "~1.0.10621",
     "request": "~2.27.0",
     "oauth": "~0.9.10",
     "open": "0.0.4",
-    "prompt": "~0.2.11"
+    "prompt": "~0.2.11",
+    "rx": "~2.2.19"
   }
 }

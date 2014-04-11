@@ -1,7 +1,7 @@
 /**
  * Created by wehjin on 10/27/13.
  */
-var rx = require('rxjs');
+var rx = require('rx');
 var request = require('request');
 var OAuth = require('oauth');
 var open = require('open');
@@ -97,7 +97,7 @@ exports.makeApi = function (consumerKey, consumerSecret, sandbox) {
 
     return {
 
-        getAccess: function() {
+        getAccess: function () {
             return getRequestToken(oauth)
                 .selectMany(function (requestToken) {
                     console.log("Request token", requestToken);
@@ -123,7 +123,7 @@ exports.makeApi = function (consumerKey, consumerSecret, sandbox) {
             });
         },
 
-        getData: function(url) {
+        getData: function (url) {
             return getAccess().selectMany(function (accessToken) {
                 return getDataWithAccess(url, accessToken);
             });
