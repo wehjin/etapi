@@ -46,7 +46,7 @@ function getAuthToken(authUrl, authCredentials) {
     var authUrlWithToken = authUrl + "&token=" + encodeURIComponent(authCredentials.requestToken);
     open(authUrlWithToken);
     return getVerifier()
-        .select(function (verifier) {
+        .map(function (verifier) {
             if (!verifier) {
                 throw "invalid verifier code";
             }
@@ -99,10 +99,10 @@ exports.makeApi = function (consumerKey, consumerSecret, sandbox) {
 
         getAccess: function () {
             return getRequestToken(oauth)
-                .selectMany(function (requestToken) {
+                .flatMap(function (requestToken) {
                     console.log("Request token", requestToken);
                     return getAuthToken(authUrl, requestToken);
-                }).selectMany(function (authToken) {
+                }).flatMap(function (authToken) {
                     console.log("Auth token", authToken);
                     return getAccessToken(oauth, authToken);
                 });
@@ -124,7 +124,7 @@ exports.makeApi = function (consumerKey, consumerSecret, sandbox) {
         },
 
         getData: function (url) {
-            return getAccess().selectMany(function (accessToken) {
+            return getAccess().flatMap(function (accessToken) {
                 return getDataWithAccess(url, accessToken);
             });
         },
