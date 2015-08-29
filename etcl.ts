@@ -10,7 +10,7 @@
 
 
 import {Http,Observable,Subscriber,BooleanSubscription} from "rxts";
-import {Service, OauthRequestToken, Credentials} from "et";
+import {Service, OauthRequestToken, Credentials, AccessToken} from "et";
 import fs = require("fs");
 import open = require("open");
 import prompt = require("prompt");
@@ -69,6 +69,9 @@ fetchRequestToken
     })
     .flatMap((credentials : Credentials)=> {
         return credentials.getAccessToken();
+    })
+    .flatMap((accessToken : AccessToken)=> {
+        return accessToken.getAccountList();
     })
     .subscribe((result)=> {
         console.log(result);

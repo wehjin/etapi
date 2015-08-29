@@ -16,5 +16,8 @@ declare module "oauth" {
         getOAuthAccessToken(requestToken : string, requestSecret : string, requestVerifier : string,
                             onResult : (err : any, accessToken : string, accessSecret : string,
                                         results : any)=>void);
+
+        get(url : string, oauth_token : string, oauth_token_secret : string,
+            handler : (err : any, data : string, response : Object)=>void);
     }
 }

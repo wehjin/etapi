@@ -14,6 +14,55 @@
     ///<reference path="node_modules/rxts/rxts.d.ts"/>
     var Oauth = require("oauth");
     var rxts_1 = require("rxts");
+    var Account = (function () {
+        function Account(json, accessToken) {
+            this.accessToken = accessToken;
+            this.accountDescription = json['accountDesc'];
+            this.accountId = json['accountId'];
+            this.marginLevel = json['marginLevel'];
+            this.netAccountValue = json['netAccountValue'];
+            this.registrationType = json['registrationType'];
+        }
+        return Account;
+    })();
+    exports.Account = Account;
+    var AccessToken = (function () {
+        function AccessToken(token, secret, flags, credentials) {
+            this.token = token;
+            this.secret = secret;
+            this.flags = flags;
+            this.credentials = credentials;
+        }
+        AccessToken.prototype.getAccountList = function () {
+            var _this = this;
+            return rxts_1.Observable.create(function (subscriber) {
+                var service = _this.credentials.requestToken.service;
+                var accountListUrl = service.getAccountListUrl();
+                var oauth = service.oauth;
+                var subscription = new rxts_1.BooleanSubscription();
+                oauth.get(accountListUrl, _this.token, _this.secret, function (err, data, response) {
+                    if (subscription.isUnsubscribed()) {
+                        return;
+                    }
+                    if (err) {
+                        subscriber.onError(err);
+                        return;
+                    }
+                    var fullResponse = JSON.parse(data);
+                    var accountsJson = fullResponse['json.accountListResponse']['response'];
+                    var accounts = [];
+                    for (var i = 0; i < accountsJson.length; i++) {
+                        accounts.push(new Account(accountsJson[i], _this));
+                    }
+                    subscriber.onNext(accounts);
+                    subscriber.onCompleted();
+                });
+                subscriber.addSubscription(subscription);
+            });
+        };
+        return AccessToken;
+    })();
+    exports.AccessToken = AccessToken;
     var Credentials = (function () {
         function Credentials(verifier, requestToken) {
             this.verifier = verifier;
@@ -30,17 +79,10 @@
                     }
                     if (err) {
                         subscriber.onError(err);
+                        return;
                     }
-                    else {
-                        var credentials = _this;
-                        subscriber.onNext({
-                            token: accessToken,
-                            secret: accessSecret,
-                            flags: accessResults,
-                            credentials: credentials
-                        });
-                        subscriber.onCompleted();
-                    }
+                    subscriber.onNext(new AccessToken(accessToken, accessSecret, accessResults, _this));
+                    subscriber.onCompleted();
                 });
                 subscriber.addSubscription(subscription);
             });
@@ -77,7 +119,7 @@
             return this.hostUrl + "/accounts" + (this.sandbox ? "/sandbox" : "") + "/rest";
         };
         Service.prototype.getAccountListUrl = function () {
-            return this.getAccountsUrl() + "/accountlist";
+            return this.getAccountsUrl() + "/accountlist.json";
         };
         Service.prototype.fetchRequestToken = function () {
             var _this = this;

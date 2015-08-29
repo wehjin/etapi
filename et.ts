@@ -9,6 +9,57 @@
 import Oauth = require("oauth");
 import {Observable,Subscriber, BooleanSubscription} from "rxts";
 
+export class Account {
+    accountDescription : string;
+    accountId : number;
+    marginLevel : string;
+    netAccountValue : number;
+    registrationType : string;
+
+    constructor(json : Object, public accessToken : AccessToken) {
+        this.accountDescription = json['accountDesc'];
+        this.accountId = json['accountId'];
+        this.marginLevel = json['marginLevel'];
+        this.netAccountValue = json['netAccountValue'];
+        this.registrationType = json['registrationType'];
+    }
+}
+
+export class AccessToken {
+
+    constructor(public token : string, public secret : string, public flags : Object,
+                public credentials : Credentials) {
+    }
+
+    getAccountList() : Observable<Account[]> {
+        return Observable.create((subscriber : Subscriber<Account[]>)=> {
+            var service = this.credentials.requestToken.service;
+            var accountListUrl = service.getAccountListUrl();
+            var oauth = service.oauth;
+            var subscription = new BooleanSubscription();
+            oauth.get(accountListUrl, this.token, this.secret, (err, data, response)=> {
+                if (subscription.isUnsubscribed()) {
+                    return;
+                }
+                if (err) {
+                    subscriber.onError(err);
+                    return;
+                }
+                var fullResponse = JSON.parse(data);
+                var accountsJson = <Object[]>fullResponse['json.accountListResponse']['response'];
+                var accounts = <Account[]>[];
+                for (var i = 0; i < accountsJson.length; i++) {
+                    accounts.push(new Account(accountsJson[i], this));
+                }
+                subscriber.onNext(accounts);
+                subscriber.onCompleted();
+            });
+            subscriber.addSubscription(subscription);
+        });
+    }
+
+}
+
 export class Credentials {
 
     constructor(public verifier : string, public requestToken : OauthRequestToken) {
@@ -26,16 +77,11 @@ export class Credentials {
                     }
                     if (err) {
                         subscriber.onError(err);
-                    } else {
-                        var credentials = this;
-                        subscriber.onNext({
-                            token: accessToken,
-                            secret: accessSecret,
-                            flags: accessResults,
-                            credentials: credentials
-                        });
-                        subscriber.onCompleted();
+                        return;
                     }
+                    subscriber.onNext(new AccessToken(accessToken, accessSecret, accessResults,
+                        this));
+                    subscriber.onCompleted();
                 }
             );
             subscriber.addSubscription(subscription);
@@ -79,7 +125,7 @@ export class Service {
     }
 
     getAccountListUrl() : string {
-        return this.getAccountsUrl() + "/accountlist";
+        return this.getAccountsUrl() + "/accountlist.json";
     }
 
     fetchRequestToken() : Observable<OauthRequestToken> {
