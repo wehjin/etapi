@@ -114,6 +114,9 @@ loadService
     .flatMap((service : Service) : Observable<AccessToken>=> {
         return readOrFetchAccessToken(service);
     })
+    .flatMap((accessToken : AccessToken)=> {
+        return accessToken.getAccountList();
+    })
     .subscribe((result)=> {
         console.log(result);
     }, (e)=> {

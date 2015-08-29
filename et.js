@@ -26,6 +26,14 @@
         return Account;
     })();
     exports.Account = Account;
+    var AccountList = (function () {
+        function AccountList(accounts, accessToken) {
+            this.accounts = accounts;
+            this.accessToken = accessToken;
+        }
+        return AccountList;
+    })();
+    exports.AccountList = AccountList;
     var AccessToken = (function () {
         function AccessToken(token, secret, flags, service) {
             this.token = token;
@@ -53,7 +61,7 @@
                     for (var i = 0; i < accountsJson.length; i++) {
                         accounts.push(new Account(accountsJson[i], _this));
                     }
-                    subscriber.onNext(accounts);
+                    subscriber.onNext(new AccountList(accounts, _this));
                     subscriber.onCompleted();
                 });
                 subscriber.addSubscription(subscription);

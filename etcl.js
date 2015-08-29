@@ -112,6 +112,9 @@
         .flatMap(function (service) {
         return readOrFetchAccessToken(service);
     })
+        .flatMap(function (accessToken) {
+        return accessToken.getAccountList();
+    })
         .subscribe(function (result) {
         console.log(result);
     }, function (e) {

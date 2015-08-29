@@ -25,14 +25,20 @@ export class Account {
     }
 }
 
+export class AccountList {
+
+    constructor(public accounts : Account[], public accessToken : AccessToken) {
+    }
+}
+
 export class AccessToken {
 
     constructor(public token : string, public secret : string, public flags : Object,
                 public service : Service) {
     }
 
-    getAccountList() : Observable<Account[]> {
-        return Observable.create((subscriber : Subscriber<Account[]>)=> {
+    getAccountList() : Observable<AccountList> {
+        return Observable.create((subscriber : Subscriber<AccountList>)=> {
             var accountListUrl = this.service.getAccountListUrl();
             var oauth = this.service.oauth;
             var subscription = new BooleanSubscription();
@@ -50,7 +56,7 @@ export class AccessToken {
                 for (var i = 0; i < accountsJson.length; i++) {
                     accounts.push(new Account(accountsJson[i], this));
                 }
-                subscriber.onNext(accounts);
+                subscriber.onNext(new AccountList(accounts, this));
                 subscriber.onCompleted();
             });
             subscriber.addSubscription(subscription);
