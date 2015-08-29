@@ -19,7 +19,11 @@
     var fs = require("fs");
     var open = require("open");
     var prompt = require("prompt");
-    function readSetup(filepath) {
+    var homePath = process.env['HOME'];
+    var prefPath = homePath + '/.etcl';
+    var setupPath = prefPath + '/setup.json';
+    var accessTokenPath = prefPath + "/accessToken.json";
+    function readJson(filepath) {
         return rxts_1.Observable.create(function (subscriber) {
             fs.readFile(filepath, function (err, data) {
                 if (err) {
@@ -33,7 +37,30 @@
             return JSON.parse(s);
         });
     }
-    function getAccessCredential(requestToken) {
+    function saveAccessToken(accessToken) {
+        return rxts_1.Observable.create(function (subscriber) {
+            var subscription = new rxts_1.BooleanSubscription();
+            var saveJson = JSON.stringify({
+                token: accessToken.token,
+                secret: accessToken.secret,
+                flags: accessToken.flags
+            });
+            fs.writeFile(accessTokenPath, saveJson, {
+                mode: 0600
+            }, function (err) {
+                if (subscription.isUnsubscribed()) {
+                    return;
+                }
+                if (err) {
+                    subscriber.onError(err);
+                    return;
+                }
+                subscriber.onNext(accessToken);
+                subscriber.onCompleted();
+            });
+        });
+    }
+    function askHumanForAccessCredentials(requestToken) {
         return rxts_1.Observable.create(function (subscriber) {
             var subscription = new rxts_1.BooleanSubscription();
             open(requestToken.getAuthenticationUrl());
@@ -58,22 +85,32 @@
             return subscription;
         });
     }
-    var setup = readSetup(process.env['HOME'] + '/.etcl/setup.json');
-    var buildService = setup.map(function (setup) {
+    function fetchAccessToken(service) {
+        return service.fetchRequestToken()
+            .flatMap(function (requestToken) {
+            return askHumanForAccessCredentials(requestToken);
+        })
+            .flatMap(function (credentials) {
+            return credentials.getAccessToken();
+        })
+            .flatMap(function (accessToken) {
+            return saveAccessToken(accessToken);
+        });
+    }
+    function readOrFetchAccessToken(service) {
+        return readJson(accessTokenPath)
+            .map(function (json) {
+            return new et_1.AccessToken(json['token'], json['secret'], json['flags'], service);
+        });
+        // TODO fetch on error.
+    }
+    var setup = readJson(setupPath);
+    var loadService = setup.map(function (setup) {
         return new et_1.Service(setup);
     });
-    var fetchRequestToken = buildService.flatMap(function (service) {
-        return service.fetchRequestToken();
-    });
-    fetchRequestToken
-        .flatMap(function (requestToken) {
-        return getAccessCredential(requestToken);
-    })
-        .flatMap(function (credentials) {
-        return credentials.getAccessToken();
-    })
-        .flatMap(function (accessToken) {
-        return accessToken.getAccountList();
+    loadService
+        .flatMap(function (service) {
+        return readOrFetchAccessToken(service);
     })
         .subscribe(function (result) {
         console.log(result);

@@ -27,18 +27,17 @@
     })();
     exports.Account = Account;
     var AccessToken = (function () {
-        function AccessToken(token, secret, flags, credentials) {
+        function AccessToken(token, secret, flags, service) {
             this.token = token;
             this.secret = secret;
             this.flags = flags;
-            this.credentials = credentials;
+            this.service = service;
         }
         AccessToken.prototype.getAccountList = function () {
             var _this = this;
             return rxts_1.Observable.create(function (subscriber) {
-                var service = _this.credentials.requestToken.service;
-                var accountListUrl = service.getAccountListUrl();
-                var oauth = service.oauth;
+                var accountListUrl = _this.service.getAccountListUrl();
+                var oauth = _this.service.oauth;
                 var subscription = new rxts_1.BooleanSubscription();
                 oauth.get(accountListUrl, _this.token, _this.secret, function (err, data, response) {
                     if (subscription.isUnsubscribed()) {
@@ -81,7 +80,7 @@
                         subscriber.onError(err);
                         return;
                     }
-                    subscriber.onNext(new AccessToken(accessToken, accessSecret, accessResults, _this));
+                    subscriber.onNext(new AccessToken(accessToken, accessSecret, accessResults, _this.requestToken.service));
                     subscriber.onCompleted();
                 });
                 subscriber.addSubscription(subscription);

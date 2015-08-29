@@ -15,7 +15,12 @@ import fs = require("fs");
 import open = require("open");
 import prompt = require("prompt");
 
-function readSetup(filepath : string) : Observable<Object> {
+var homePath = process.env['HOME'];
+var prefPath = homePath + '/.etcl';
+var setupPath = prefPath + '/setup.json';
+var accessTokenPath = prefPath + "/accessToken.json";
+
+function readJson(filepath : string) : Observable<Object> {
     return Observable.create((subscriber : Subscriber<string>)=> {
         fs.readFile(filepath, function (err, data) {
             if (err) {
@@ -30,7 +35,31 @@ function readSetup(filepath : string) : Observable<Object> {
     });
 }
 
-function getAccessCredential(requestToken : OauthRequestToken) : Observable<Credentials> {
+function saveAccessToken(accessToken : AccessToken) : Observable<AccessToken> {
+    return Observable.create((subscriber : Subscriber<AccessToken>)=> {
+        var subscription = new BooleanSubscription();
+        var saveJson = JSON.stringify({
+            token: accessToken.token,
+            secret: accessToken.secret,
+            flags: accessToken.flags
+        });
+        fs.writeFile(accessTokenPath, saveJson, {
+            mode: 0600
+        }, (err : any)=> {
+            if (subscription.isUnsubscribed()) {
+                return;
+            }
+            if (err) {
+                subscriber.onError(err);
+                return;
+            }
+            subscriber.onNext(accessToken);
+            subscriber.onCompleted();
+        });
+    });
+}
+
+function askHumanForAccessCredentials(requestToken : OauthRequestToken) : Observable<Credentials> {
 
     return Observable.create((subscriber : Subscriber<Credentials>)=> {
         var subscription = new BooleanSubscription();
@@ -56,22 +85,34 @@ function getAccessCredential(requestToken : OauthRequestToken) : Observable<Cred
     });
 }
 
-var setup = readSetup(process.env['HOME'] + '/.etcl/setup.json');
-var buildService = setup.map((setup : Object) : Service => {
+function fetchAccessToken(service : Service) {
+    return service.fetchRequestToken()
+        .flatMap((requestToken : OauthRequestToken)=> {
+            return askHumanForAccessCredentials(requestToken);
+        })
+        .flatMap((credentials : Credentials)=> {
+            return credentials.getAccessToken();
+        })
+        .flatMap((accessToken : AccessToken) : Observable<AccessToken>=> {
+            return saveAccessToken(accessToken);
+        });
+}
+
+function readOrFetchAccessToken(service : Service) : Observable<AccessToken> {
+    return readJson(accessTokenPath)
+        .map((json : Object)=> {
+            return new AccessToken(json['token'], json['secret'], json['flags'], service);
+        });
+    // TODO fetch on error.
+}
+
+var setup = readJson(setupPath);
+var loadService = setup.map((setup : Object) : Service => {
     return new Service(setup);
 });
-var fetchRequestToken = buildService.flatMap((service : Service) : Observable<OauthRequestToken>=> {
-    return service.fetchRequestToken();
-});
-fetchRequestToken
-    .flatMap((requestToken : OauthRequestToken)=> {
-        return getAccessCredential(requestToken);
-    })
-    .flatMap((credentials : Credentials)=> {
-        return credentials.getAccessToken();
-    })
-    .flatMap((accessToken : AccessToken)=> {
-        return accessToken.getAccountList();
+loadService
+    .flatMap((service : Service) : Observable<AccessToken>=> {
+        return readOrFetchAccessToken(service);
     })
     .subscribe((result)=> {
         console.log(result);

@@ -28,14 +28,13 @@ export class Account {
 export class AccessToken {
 
     constructor(public token : string, public secret : string, public flags : Object,
-                public credentials : Credentials) {
+                public service : Service) {
     }
 
     getAccountList() : Observable<Account[]> {
         return Observable.create((subscriber : Subscriber<Account[]>)=> {
-            var service = this.credentials.requestToken.service;
-            var accountListUrl = service.getAccountListUrl();
-            var oauth = service.oauth;
+            var accountListUrl = this.service.getAccountListUrl();
+            var oauth = this.service.oauth;
             var subscription = new BooleanSubscription();
             oauth.get(accountListUrl, this.token, this.secret, (err, data, response)=> {
                 if (subscription.isUnsubscribed()) {
@@ -80,7 +79,7 @@ export class Credentials {
                         return;
                     }
                     subscriber.onNext(new AccessToken(accessToken, accessSecret, accessResults,
-                        this));
+                        this.requestToken.service));
                     subscriber.onCompleted();
                 }
             );
