@@ -23,11 +23,23 @@
     var prefPath = homePath + '/.etcl';
     var setupPath = prefPath + '/setup.json';
     var accessTokenPath = prefPath + "/accessToken.json";
+    var NoEntryError = (function () {
+        function NoEntryError(message) {
+            this.name = "NoEntryError";
+            this.message = message;
+        }
+        return NoEntryError;
+    })();
     function readJson(filepath) {
         return rxts_1.Observable.create(function (subscriber) {
             fs.readFile(filepath, function (err, data) {
                 if (err) {
-                    subscriber.onError(err);
+                    if (err['code'] === 'ENOENT') {
+                        subscriber.onError(new NoEntryError(JSON.stringify(err)));
+                    }
+                    else {
+                        subscriber.onError(err);
+                    }
                     return;
                 }
                 subscriber.onNext(data.toString('utf8'));
@@ -35,6 +47,22 @@
             });
         }).map(function (s) {
             return JSON.parse(s);
+        });
+    }
+    function deleteAccessToken() {
+        return rxts_1.Observable.create(function (subscriber) {
+            var subscription = new rxts_1.BooleanSubscription();
+            fs.unlink(accessTokenPath, function (err) {
+                if (subscription.isUnsubscribed()) {
+                    return;
+                }
+                if (err) {
+                    subscriber.onError(err);
+                    return;
+                }
+                subscriber.onNext(true);
+                subscriber.onCompleted();
+            });
         });
     }
     function saveAccessToken(accessToken) {
@@ -101,19 +129,37 @@
         return readJson(accessTokenPath)
             .map(function (json) {
             return new et_1.AccessToken(json['token'], json['secret'], json['flags'], service);
+        })
+            .onErrorResumeNext(function (e) {
+            if (e instanceof NoEntryError) {
+                return fetchAccessToken(service);
+            }
+            else {
+                return rxts_1.Observable.error(e);
+            }
         });
-        // TODO fetch on error.
     }
     var setup = readJson(setupPath);
     var loadService = setup.map(function (setup) {
         return new et_1.Service(setup);
     });
-    loadService
+    var getAccountList = loadService
         .flatMap(function (service) {
         return readOrFetchAccessToken(service);
     })
         .flatMap(function (accessToken) {
         return accessToken.getAccountList();
+    });
+    getAccountList
+        .onErrorResumeNext(function (e) {
+        if (e instanceof et_1.TokenExpiredError) {
+            return deleteAccessToken().flatMap(function () {
+                return getAccountList;
+            });
+        }
+        else {
+            return rxts_1.Observable.error(e);
+        }
     })
         .subscribe(function (result) {
         console.log(result);

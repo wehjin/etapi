@@ -10,7 +10,7 @@
 
 
 import {Http,Observable,Subscriber,BooleanSubscription} from "rxts";
-import {Service, OauthRequestToken, Credentials, AccessToken} from "et";
+import {Service, OauthRequestToken, Credentials, AccessToken, TokenExpiredError} from "et";
 import fs = require("fs");
 import open = require("open");
 import prompt = require("prompt");
@@ -20,11 +20,24 @@ var prefPath = homePath + '/.etcl';
 var setupPath = prefPath + '/setup.json';
 var accessTokenPath = prefPath + "/accessToken.json";
 
+class NoEntryError implements Error {
+    name : string = "NoEntryError";
+    message : string;
+
+    constructor(message : string) {
+        this.message = message;
+    }
+}
+
 function readJson(filepath : string) : Observable<Object> {
     return Observable.create((subscriber : Subscriber<string>)=> {
         fs.readFile(filepath, function (err, data) {
             if (err) {
-                subscriber.onError(err);
+                if (err['code'] === 'ENOENT') {
+                    subscriber.onError(new NoEntryError(JSON.stringify(err)));
+                } else {
+                    subscriber.onError(err);
+                }
                 return;
             }
             subscriber.onNext(data.toString('utf8'));
@@ -32,6 +45,23 @@ function readJson(filepath : string) : Observable<Object> {
         });
     }).map((s : string)=> {
         return JSON.parse(s);
+    });
+}
+
+function deleteAccessToken() : Observable<boolean> {
+    return Observable.create((subscriber : Subscriber<boolean>)=> {
+        var subscription = new BooleanSubscription();
+        fs.unlink(accessTokenPath, (err : any)=> {
+            if (subscription.isUnsubscribed()) {
+                return;
+            }
+            if (err) {
+                subscriber.onError(err);
+                return;
+            }
+            subscriber.onNext(true);
+            subscriber.onCompleted();
+        });
     });
 }
 
@@ -102,20 +132,36 @@ function readOrFetchAccessToken(service : Service) : Observable<AccessToken> {
     return readJson(accessTokenPath)
         .map((json : Object)=> {
             return new AccessToken(json['token'], json['secret'], json['flags'], service);
+        })
+        .onErrorResumeNext((e)=> {
+            if (e instanceof NoEntryError) {
+                return fetchAccessToken(service);
+            } else {
+                return Observable.error(e);
+            }
         });
-    // TODO fetch on error.
 }
 
 var setup = readJson(setupPath);
 var loadService = setup.map((setup : Object) : Service => {
     return new Service(setup);
 });
-loadService
+var getAccountList = loadService
     .flatMap((service : Service) : Observable<AccessToken>=> {
         return readOrFetchAccessToken(service);
     })
     .flatMap((accessToken : AccessToken)=> {
         return accessToken.getAccountList();
+    });
+getAccountList
+    .onErrorResumeNext((e)=> {
+        if (e instanceof TokenExpiredError) {
+            return deleteAccessToken().flatMap(()=> {
+                return getAccountList;
+            })
+        } else {
+            return Observable.error(e);
+        }
     })
     .subscribe((result)=> {
         console.log(result);

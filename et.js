@@ -14,6 +14,14 @@
     ///<reference path="node_modules/rxts/rxts.d.ts"/>
     var Oauth = require("oauth");
     var rxts_1 = require("rxts");
+    var TokenExpiredError = (function () {
+        function TokenExpiredError(message) {
+            this.name = "TokenExpired";
+            this.message = message;
+        }
+        return TokenExpiredError;
+    })();
+    exports.TokenExpiredError = TokenExpiredError;
     var Account = (function () {
         function Account(json, accessToken) {
             this.accessToken = accessToken;
@@ -52,7 +60,25 @@
                         return;
                     }
                     if (err) {
-                        subscriber.onError(err);
+                        var send = err;
+                        if (err['statusCode'] === 401) {
+                            var body = err['data'];
+                            if (body) {
+                                var errorInBody = JSON.parse(body)['Error'];
+                                if (errorInBody) {
+                                    var message = errorInBody['message'];
+                                    if (message) {
+                                        if (message === "oauth_problem=token_expired") {
+                                            send = new TokenExpiredError(message);
+                                        }
+                                        else {
+                                            send = new Error(message);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        subscriber.onError(send);
                         return;
                     }
                     var fullResponse = JSON.parse(data);
