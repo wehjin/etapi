@@ -1,20 +1,21 @@
 {
-    "name": "etapi",
-    "version": "0.0.2",
-    "description": "Access Etrade developer api",
-    "keywords": [
-        "etrade"
-    ],
-    "license": "MIT",
-    "author": {
-        "name": "Jeffrey Yu"
-    },
-    "main": "etapi.js",
-    "dependencies": {
-        "request": "~2.27.0",
-        "oauth": "~0.9.10",
-        "open": "0.0.4",
-        "prompt": "~0.2.11",
-        "rx": "~2.2.19"
-    }
+  "name": "etapi",
+  "version": "0.0.2",
+  "description": "Access Etrade developer api",
+  "keywords": [
+    "etrade"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Jeffrey Yu"
+  },
+  "main": "etapi.js",
+  "dependencies": {
+    "oauth": "~0.9.10",
+    "open": "0.0.4",
+    "prompt": "~0.2.11",
+    "request": "~2.27.0",
+    "rx": "~2.2.19",
+    "rxts": "git://github.com/wehjin/rxts.git"
+  }
 }
