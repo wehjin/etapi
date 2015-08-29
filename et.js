@@ -47,7 +47,8 @@
             var _this = this;
             var url = this.getResourceUrl("accountpositions");
             return this.accessToken.getJson(url).map(function (json) {
-                _this.positions = json['json.accountPositionsResponse']['response'];
+                var response = json['json.accountPositionsResponse']['response'];
+                _this.positions = response || [];
                 console.log(_this.positions);
                 return _this;
             });
@@ -62,20 +63,33 @@
         }
         AccountList.prototype.eachAccount = function (each) {
             var _this = this;
-            var count = 0;
             return rxts_1.Observable.from(this.accounts)
                 .flatMap(function (n) {
+                var count = 0;
+                var start;
                 return rxts_1.Observable.create(function (subscriber) {
-                    var subscription = new rxts_1.BooleanSubscription();
-                    setTimeout(function () {
-                        if (subscriber.isUnsubscribed()) {
-                            return;
-                        }
+                    var now = Date.now();
+                    if (count === 0) {
+                        start = now;
+                    }
+                    count++;
+                    var horizon = start + count * 150;
+                    var delay = Math.max(0, horizon - now);
+                    if (delay === 0) {
                         subscriber.onNext(n);
                         subscriber.onCompleted();
-                    }, count * 100);
-                    subscriber.addSubscription(subscription);
-                    count++;
+                    }
+                    else {
+                        var subscription = new rxts_1.BooleanSubscription();
+                        setTimeout(function () {
+                            if (subscriber.isUnsubscribed()) {
+                                return;
+                            }
+                            subscriber.onNext(n);
+                            subscriber.onCompleted();
+                        }, delay);
+                        subscriber.addSubscription(subscription);
+                    }
                 });
             })
                 .flatMap(each)

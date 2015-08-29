@@ -51,7 +51,8 @@ export class Account {
     refreshPositions() : Observable<Account> {
         var url = this.getResourceUrl("accountpositions");
         return this.accessToken.getJson(url).map((json : Object)=> {
-            this.positions = json['json.accountPositionsResponse']['response'];
+            var response = json['json.accountPositionsResponse']['response'];
+            this.positions = response || [];
             console.log(this.positions);
             return this;
         });
@@ -64,20 +65,32 @@ export class AccountList {
     }
 
     private eachAccount(each : (account : Account)=>Observable<Account>) : Observable<AccountList> {
-        var count = 0;
         return Observable.from(this.accounts)
             .flatMap((n)=> {
+                var count = 0;
+                var start;
                 return Observable.create((subscriber : Subscriber<Account>)=> {
-                    var subscription = new BooleanSubscription();
-                    setTimeout(()=> {
-                        if (subscriber.isUnsubscribed()) {
-                            return;
-                        }
+                    var now = Date.now();
+                    if (count === 0) {
+                        start = now;
+                    }
+                    count++;
+                    var horizon = start + count * 150;
+                    var delay = Math.max(0, horizon - now);
+                    if (delay === 0) {
                         subscriber.onNext(n);
                         subscriber.onCompleted();
-                    }, count * 100);
-                    subscriber.addSubscription(subscription);
-                    count++;
+                    } else {
+                        var subscription = new BooleanSubscription();
+                        setTimeout(()=> {
+                            if (subscriber.isUnsubscribed()) {
+                                return;
+                            }
+                            subscriber.onNext(n);
+                            subscriber.onCompleted();
+                        }, delay);
+                        subscriber.addSubscription(subscription);
+                    }
                 });
             })
             .flatMap(each)
