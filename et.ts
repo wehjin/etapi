@@ -24,6 +24,8 @@ export class Account {
     marginLevel : string;
     netAccountValue : number;
     registrationType : string;
+    balance : Object;
+    positions : Object;
 
     constructor(json : Object, public accessToken : AccessToken) {
         this.accountDescription = json['accountDesc'];
@@ -32,11 +34,70 @@ export class Account {
         this.netAccountValue = json['netAccountValue'];
         this.registrationType = json['registrationType'];
     }
+
+    private getResourceUrl(resource) {
+        return this.accessToken.service.getAccountsUrl() + "/" + resource + "/" +
+            this.accountId + ".json";
+    }
+
+    refreshBalance() : Observable<Account> {
+        var url = this.getResourceUrl("accountbalance");
+        return this.accessToken.getJson(url).map((json : Object)=> {
+            this.balance = json['json.accountBalanceResponse']['accountBalance'];
+            return this;
+        });
+    }
+
+    refreshPositions() : Observable<Account> {
+        var url = this.getResourceUrl("accountpositions");
+        return this.accessToken.getJson(url).map((json : Object)=> {
+            this.positions = json['json.accountPositionsResponse']['response'];
+            console.log(this.positions);
+            return this;
+        });
+    }
 }
 
 export class AccountList {
 
     constructor(public accounts : Account[], public accessToken : AccessToken) {
+    }
+
+    private eachAccount(each : (account : Account)=>Observable<Account>) : Observable<AccountList> {
+        var count = 0;
+        return Observable.from(this.accounts)
+            .flatMap((n)=> {
+                return Observable.create((subscriber : Subscriber<Account>)=> {
+                    var subscription = new BooleanSubscription();
+                    setTimeout(()=> {
+                        if (subscriber.isUnsubscribed()) {
+                            return;
+                        }
+                        subscriber.onNext(n);
+                        subscriber.onCompleted();
+                    }, count * 100);
+                    subscriber.addSubscription(subscription);
+                    count++;
+                });
+            })
+            .flatMap(each)
+            .toList()
+            .map((accounts : Account[]) => {
+                this.accounts = accounts;
+                return this;
+            });
+    }
+
+    refreshPositions() : Observable<AccountList> {
+        return this.eachAccount((account : Account) : Observable<Account>=> {
+            return account.refreshPositions();
+        });
+    }
+
+    refreshBalances() : Observable<AccountList> {
+        return this.eachAccount((account : Account) : Observable<Account>=> {
+            return account.refreshBalance();
+        });
     }
 }
 
@@ -46,12 +107,11 @@ export class AccessToken {
                 public service : Service) {
     }
 
-    getAccountList() : Observable<AccountList> {
-        return Observable.create((subscriber : Subscriber<AccountList>)=> {
-            var accountListUrl = this.service.getAccountListUrl();
+    getJson(url : string) : Observable<Object> {
+        return Observable.create((subscriber : Subscriber<Object>)=> {
             var oauth = this.service.oauth;
             var subscription = new BooleanSubscription();
-            oauth.get(accountListUrl, this.token, this.secret, (err, data, response)=> {
+            oauth.get(url, this.token, this.secret, (err, data, response)=> {
                 if (subscription.isUnsubscribed()) {
                     return;
                 }
@@ -76,19 +136,24 @@ export class AccessToken {
                     subscriber.onError(send);
                     return;
                 }
-                var fullResponse = JSON.parse(data);
-                var accountsJson = <Object[]>fullResponse['json.accountListResponse']['response'];
-                var accounts = <Account[]>[];
-                for (var i = 0; i < accountsJson.length; i++) {
-                    accounts.push(new Account(accountsJson[i], this));
-                }
-                subscriber.onNext(new AccountList(accounts, this));
+                subscriber.onNext(JSON.parse(data));
                 subscriber.onCompleted();
             });
             subscriber.addSubscription(subscription);
         });
     }
 
+    getAccountList() : Observable<AccountList> {
+        return this.getJson(this.service.getAccountListUrl())
+            .map((json : Object) : AccountList => {
+                var accountsJson = <Object[]>json['json.accountListResponse']['response'];
+                var accounts = <Account[]>[];
+                for (var i = 0; i < accountsJson.length; i++) {
+                    accounts.push(new Account(accountsJson[i], this));
+                }
+                return new AccountList(accounts, this);
+            });
+    }
 }
 
 export class Credentials {

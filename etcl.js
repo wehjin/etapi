@@ -161,6 +161,12 @@
             return rxts_1.Observable.error(e);
         }
     })
+        .flatMap(function (accountList) {
+        return accountList.refreshBalances();
+    })
+        .flatMap(function (accountList) {
+        return accountList.refreshPositions();
+    })
         .subscribe(function (result) {
         console.log(result);
     }, function (e) {

@@ -31,6 +31,27 @@
             this.netAccountValue = json['netAccountValue'];
             this.registrationType = json['registrationType'];
         }
+        Account.prototype.getResourceUrl = function (resource) {
+            return this.accessToken.service.getAccountsUrl() + "/" + resource + "/" +
+                this.accountId + ".json";
+        };
+        Account.prototype.refreshBalance = function () {
+            var _this = this;
+            var url = this.getResourceUrl("accountbalance");
+            return this.accessToken.getJson(url).map(function (json) {
+                _this.balance = json['json.accountBalanceResponse']['accountBalance'];
+                return _this;
+            });
+        };
+        Account.prototype.refreshPositions = function () {
+            var _this = this;
+            var url = this.getResourceUrl("accountpositions");
+            return this.accessToken.getJson(url).map(function (json) {
+                _this.positions = json['json.accountPositionsResponse']['response'];
+                console.log(_this.positions);
+                return _this;
+            });
+        };
         return Account;
     })();
     exports.Account = Account;
@@ -39,6 +60,41 @@
             this.accounts = accounts;
             this.accessToken = accessToken;
         }
+        AccountList.prototype.eachAccount = function (each) {
+            var _this = this;
+            var count = 0;
+            return rxts_1.Observable.from(this.accounts)
+                .flatMap(function (n) {
+                return rxts_1.Observable.create(function (subscriber) {
+                    var subscription = new rxts_1.BooleanSubscription();
+                    setTimeout(function () {
+                        if (subscriber.isUnsubscribed()) {
+                            return;
+                        }
+                        subscriber.onNext(n);
+                        subscriber.onCompleted();
+                    }, count * 100);
+                    subscriber.addSubscription(subscription);
+                    count++;
+                });
+            })
+                .flatMap(each)
+                .toList()
+                .map(function (accounts) {
+                _this.accounts = accounts;
+                return _this;
+            });
+        };
+        AccountList.prototype.refreshPositions = function () {
+            return this.eachAccount(function (account) {
+                return account.refreshPositions();
+            });
+        };
+        AccountList.prototype.refreshBalances = function () {
+            return this.eachAccount(function (account) {
+                return account.refreshBalance();
+            });
+        };
         return AccountList;
     })();
     exports.AccountList = AccountList;
@@ -49,13 +105,12 @@
             this.flags = flags;
             this.service = service;
         }
-        AccessToken.prototype.getAccountList = function () {
+        AccessToken.prototype.getJson = function (url) {
             var _this = this;
             return rxts_1.Observable.create(function (subscriber) {
-                var accountListUrl = _this.service.getAccountListUrl();
                 var oauth = _this.service.oauth;
                 var subscription = new rxts_1.BooleanSubscription();
-                oauth.get(accountListUrl, _this.token, _this.secret, function (err, data, response) {
+                oauth.get(url, _this.token, _this.secret, function (err, data, response) {
                     if (subscription.isUnsubscribed()) {
                         return;
                     }
@@ -81,16 +136,22 @@
                         subscriber.onError(send);
                         return;
                     }
-                    var fullResponse = JSON.parse(data);
-                    var accountsJson = fullResponse['json.accountListResponse']['response'];
-                    var accounts = [];
-                    for (var i = 0; i < accountsJson.length; i++) {
-                        accounts.push(new Account(accountsJson[i], _this));
-                    }
-                    subscriber.onNext(new AccountList(accounts, _this));
+                    subscriber.onNext(JSON.parse(data));
                     subscriber.onCompleted();
                 });
                 subscriber.addSubscription(subscription);
+            });
+        };
+        AccessToken.prototype.getAccountList = function () {
+            var _this = this;
+            return this.getJson(this.service.getAccountListUrl())
+                .map(function (json) {
+                var accountsJson = json['json.accountListResponse']['response'];
+                var accounts = [];
+                for (var i = 0; i < accountsJson.length; i++) {
+                    accounts.push(new Account(accountsJson[i], _this));
+                }
+                return new AccountList(accounts, _this);
             });
         };
         return AccessToken;

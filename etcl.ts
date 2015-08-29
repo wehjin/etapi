@@ -10,7 +10,7 @@
 
 
 import {Http,Observable,Subscriber,BooleanSubscription} from "rxts";
-import {Service, OauthRequestToken, Credentials, AccessToken, TokenExpiredError} from "et";
+import {Service, OauthRequestToken, Credentials, AccessToken, TokenExpiredError, AccountList} from "et";
 import fs = require("fs");
 import open = require("open");
 import prompt = require("prompt");
@@ -162,6 +162,12 @@ getAccountList
         } else {
             return Observable.error(e);
         }
+    })
+    .flatMap((accountList : AccountList)=> {
+        return accountList.refreshBalances();
+    })
+    .flatMap((accountList : AccountList)=> {
+        return accountList.refreshPositions();
     })
     .subscribe((result)=> {
         console.log(result);
