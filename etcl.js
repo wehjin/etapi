@@ -228,6 +228,7 @@
                 marketValue: cash
             };
             this.addPosition(cashPosition);
+            this.accountList = accountList;
         }
         Assets.prototype.addPosition = function (position) {
             var productId = position['productId'];
@@ -261,6 +262,7 @@
                 var asset = array[i];
                 report += asset.report();
             }
+            report += ":: " + this.accountList.date;
             return report;
         };
         return Assets;

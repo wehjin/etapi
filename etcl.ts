@@ -223,6 +223,7 @@ interface AssetMap {
 }
 class Assets {
     assets : AssetMap = {};
+    private accountList;
 
     constructor(accountList : AccountList) {
         for (var i = 0; i < accountList.accounts.length; i++) {
@@ -243,6 +244,7 @@ class Assets {
             marketValue: cash
         };
         this.addPosition(cashPosition);
+        this.accountList = accountList;
     }
 
     private addPosition(position : Object) {
@@ -278,6 +280,7 @@ class Assets {
             var asset = array[i];
             report += asset.report();
         }
+        report += ":: " + this.accountList.date;
         return report;
     }
 }
