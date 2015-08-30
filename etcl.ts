@@ -232,10 +232,6 @@ class Assets {
         }
         var symbol = productId['symbol'];
         var typeCode = productId['typeCode'];
-        if (typeCode === 'OPTN') {
-            console.log("Skipping option position: " + symbol);
-            return;
-        }
         var assetId = JSON.stringify({
             symbol: symbol,
             typeCode: typeCode
