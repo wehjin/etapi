@@ -224,7 +224,28 @@ interface AssetMap {
 class Assets {
     assets : AssetMap = {};
 
-    addPosition(position : Object) {
+    constructor(accountList : AccountList) {
+        for (var i = 0; i < accountList.accounts.length; i++) {
+            var account = accountList.accounts[i];
+            for (var i = 0; i < account.positions.length; i++) {
+                this.addPosition(account.positions[i]);
+            }
+        }
+        var cash = accountList.getCash();
+        var cashPosition = {
+            productId: {
+                symbol: 'USD',
+                typeCode: 'CUR'
+            },
+            description: 'US Dollars',
+            qty: cash,
+            currentPrice: 1,
+            marketValue: cash
+        };
+        this.addPosition(cashPosition);
+    }
+
+    private addPosition(position : Object) {
         var productId = position['productId'];
         if (!productId) {
             console.error("Position missing product id:", position);
@@ -270,20 +291,18 @@ function main() {
             return readOrFetchAccessToken(service);
         });
 
-    var assets = new Assets();
     readOrFetchAccountList(accessToken)
-        .flatMap((accountList)=> {
-            return Observable.from(accountList.accounts);
+        .map((accountList)=> {
+            return new Assets(accountList);
         })
-        .flatMap((account)=> {
-            return Observable.from(account.positions);
+        .map((assets)=> {
+            return assets.report();
         })
         .subscribe((result)=> {
-            assets.addPosition(result);
+            console.log(result);
         }, (e)=> {
             console.error(e);
         }, ()=> {
-            console.log(assets.report());
         });
 }
 main();

@@ -208,8 +208,26 @@
         return Asset;
     })();
     var Assets = (function () {
-        function Assets() {
+        function Assets(accountList) {
             this.assets = {};
+            for (var i = 0; i < accountList.accounts.length; i++) {
+                var account = accountList.accounts[i];
+                for (var i = 0; i < account.positions.length; i++) {
+                    this.addPosition(account.positions[i]);
+                }
+            }
+            var cash = accountList.getCash();
+            var cashPosition = {
+                productId: {
+                    symbol: 'USD',
+                    typeCode: 'CUR'
+                },
+                description: 'US Dollars',
+                qty: cash,
+                currentPrice: 1,
+                marketValue: cash
+            };
+            this.addPosition(cashPosition);
         }
         Assets.prototype.addPosition = function (position) {
             var productId = position['productId'];
@@ -255,20 +273,18 @@
             .flatMap(function (service) {
             return readOrFetchAccessToken(service);
         });
-        var assets = new Assets();
         readOrFetchAccountList(accessToken)
-            .flatMap(function (accountList) {
-            return rxts_1.Observable.from(accountList.accounts);
+            .map(function (accountList) {
+            return new Assets(accountList);
         })
-            .flatMap(function (account) {
-            return rxts_1.Observable.from(account.positions);
+            .map(function (assets) {
+            return assets.report();
         })
             .subscribe(function (result) {
-            assets.addPosition(result);
+            console.log(result);
         }, function (e) {
             console.error(e);
         }, function () {
-            console.log(assets.report());
         });
     }
     main();
