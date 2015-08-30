@@ -80,6 +80,9 @@ var __extends = (this && this.__extends) || function (d, b) {
                 return _this;
             });
         };
+        Account.prototype.getCash = function () {
+            return this.balance['netCash'];
+        };
         return Account;
     })();
     exports.Account = Account;
@@ -150,6 +153,13 @@ var __extends = (this && this.__extends) || function (d, b) {
             return this.eachAccount(function (account) {
                 return account.refreshBalance();
             });
+        };
+        AccountList.prototype.getCash = function () {
+            var cash = 0;
+            for (var i = 0; i < this.accounts.length; i++) {
+                cash += this.accounts[i].getCash();
+            }
+            return cash;
         };
         return AccountList;
     })();

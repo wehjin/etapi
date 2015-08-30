@@ -198,7 +198,11 @@ function main() {
             return readOrFetchAccessToken(service);
         });
     var accountList = readOrFetchAccountList(accessToken);
-    accountList.subscribe((result)=> {
+    accountList
+        .map((accountList)=> {
+            return accountList.getCash();
+        })
+        .subscribe((result)=> {
             console.log(result);
         }, (e)=> {
             console.error(e);

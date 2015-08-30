@@ -80,6 +80,9 @@ export class Account {
         });
     }
 
+    getCash() : number {
+        return this.balance['netCash'];
+    }
 }
 
 export class AccountList implements Jsonable {
@@ -150,6 +153,14 @@ export class AccountList implements Jsonable {
         return this.eachAccount((account : Account) : Observable<Account>=> {
             return account.refreshBalance();
         });
+    }
+
+    getCash() : number {
+        var cash = 0;
+        for (var i = 0; i < this.accounts.length; i++) {
+            cash += this.accounts[i].getCash();
+        }
+        return cash;
     }
 }
 
