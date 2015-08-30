@@ -30,6 +30,10 @@ export class TokenRejectedError extends TokenError implements Error {
     }
 }
 
+export interface Jsonable {
+    toJson():string;
+}
+
 export class Account {
     accountDescription : string;
     accountId : number;
@@ -47,6 +51,13 @@ export class Account {
         this.registrationType = json['registrationType'];
     }
 
+    static fromJson(jsonAccount : Object, accessToken : AccessToken) : Account {
+        var account = new Account(jsonAccount, accessToken);
+        account.balance = jsonAccount['balance'];
+        account.positions = jsonAccount['positions'];
+        return account;
+    }
+
     private getResourceUrl(resource) {
         return this.accessToken.service.getAccountsUrl() + "/" + resource + "/" +
             this.accountId + ".json";
@@ -54,7 +65,7 @@ export class Account {
 
     refreshBalance() : Observable<Account> {
         var url = this.getResourceUrl("accountbalance");
-        return this.accessToken.getJson(url).map((json : Object)=> {
+        return this.accessToken.fetchSecuredResource(url).map((json : Object)=> {
             this.balance = json['json.accountBalanceResponse']['accountBalance'];
             return this;
         });
@@ -62,18 +73,34 @@ export class Account {
 
     refreshPositions() : Observable<Account> {
         var url = this.getResourceUrl("accountpositions");
-        return this.accessToken.getJson(url).map((json : Object)=> {
+        return this.accessToken.fetchSecuredResource(url).map((json : Object)=> {
             var response = json['json.accountPositionsResponse']['response'];
             this.positions = response || [];
-            console.log(this.positions);
             return this;
         });
     }
+
 }
 
-export class AccountList {
+export class AccountList implements Jsonable {
 
-    constructor(public accounts : Account[], public accessToken : AccessToken) {
+    constructor(public accounts : Account[], public date : Date, public accessToken : AccessToken) {
+    }
+
+    toJson() : string {
+        return JSON.stringify(this, (key : string, value : any)=> {
+            return key === 'accessToken' ? undefined : value;
+        });
+    }
+
+    static fromJson(jsonAccountList : Object, accessToken : AccessToken) : AccountList {
+        var jsonAccounts = jsonAccountList['accounts'];
+        var accounts : Account[] = [];
+        for (var i = 0; i < jsonAccounts.length; i++) {
+            var account : Account = Account.fromJson(jsonAccounts[i], accessToken);
+            accounts.push(account);
+        }
+        return new AccountList(accounts, new Date(jsonAccountList['date']), accessToken);
     }
 
     private eachAccount(each : (account : Account)=>Observable<Account>) : Observable<AccountList> {
@@ -126,13 +153,19 @@ export class AccountList {
     }
 }
 
-export class AccessToken {
+export class AccessToken implements Jsonable {
 
     constructor(public token : string, public secret : string, public flags : Object,
                 public service : Service) {
     }
 
-    getJson(url : string) : Observable<Object> {
+    toJson() : string {
+        return JSON.stringify(this, (key, value)=> {
+            return key === 'service' ? undefined : value;
+        });
+    }
+
+    fetchSecuredResource(url : string) : Observable<Object> {
         return Observable.create((subscriber : Subscriber<Object>)=> {
             var oauth = this.service.oauth;
             var subscription = new BooleanSubscription();
@@ -170,15 +203,15 @@ export class AccessToken {
         });
     }
 
-    getAccountList() : Observable<AccountList> {
-        return this.getJson(this.service.getAccountListUrl())
+    fetchAccountList() : Observable<AccountList> {
+        return this.fetchSecuredResource(this.service.getAccountListUrl())
             .map((json : Object) : AccountList => {
                 var accountsJson = <Object[]>json['json.accountListResponse']['response'];
                 var accounts = <Account[]>[];
                 for (var i = 0; i < accountsJson.length; i++) {
                     accounts.push(new Account(accountsJson[i], this));
                 }
-                return new AccountList(accounts, this);
+                return new AccountList(accounts, new Date(), this);
             });
     }
 }

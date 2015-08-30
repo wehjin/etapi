@@ -53,6 +53,12 @@ var __extends = (this && this.__extends) || function (d, b) {
             this.netAccountValue = json['netAccountValue'];
             this.registrationType = json['registrationType'];
         }
+        Account.fromJson = function (jsonAccount, accessToken) {
+            var account = new Account(jsonAccount, accessToken);
+            account.balance = jsonAccount['balance'];
+            account.positions = jsonAccount['positions'];
+            return account;
+        };
         Account.prototype.getResourceUrl = function (resource) {
             return this.accessToken.service.getAccountsUrl() + "/" + resource + "/" +
                 this.accountId + ".json";
@@ -60,7 +66,7 @@ var __extends = (this && this.__extends) || function (d, b) {
         Account.prototype.refreshBalance = function () {
             var _this = this;
             var url = this.getResourceUrl("accountbalance");
-            return this.accessToken.getJson(url).map(function (json) {
+            return this.accessToken.fetchSecuredResource(url).map(function (json) {
                 _this.balance = json['json.accountBalanceResponse']['accountBalance'];
                 return _this;
             });
@@ -68,10 +74,9 @@ var __extends = (this && this.__extends) || function (d, b) {
         Account.prototype.refreshPositions = function () {
             var _this = this;
             var url = this.getResourceUrl("accountpositions");
-            return this.accessToken.getJson(url).map(function (json) {
+            return this.accessToken.fetchSecuredResource(url).map(function (json) {
                 var response = json['json.accountPositionsResponse']['response'];
                 _this.positions = response || [];
-                console.log(_this.positions);
                 return _this;
             });
         };
@@ -79,10 +84,25 @@ var __extends = (this && this.__extends) || function (d, b) {
     })();
     exports.Account = Account;
     var AccountList = (function () {
-        function AccountList(accounts, accessToken) {
+        function AccountList(accounts, date, accessToken) {
             this.accounts = accounts;
+            this.date = date;
             this.accessToken = accessToken;
         }
+        AccountList.prototype.toJson = function () {
+            return JSON.stringify(this, function (key, value) {
+                return key === 'accessToken' ? undefined : value;
+            });
+        };
+        AccountList.fromJson = function (jsonAccountList, accessToken) {
+            var jsonAccounts = jsonAccountList['accounts'];
+            var accounts = [];
+            for (var i = 0; i < jsonAccounts.length; i++) {
+                var account = Account.fromJson(jsonAccounts[i], accessToken);
+                accounts.push(account);
+            }
+            return new AccountList(accounts, new Date(jsonAccountList['date']), accessToken);
+        };
         AccountList.prototype.eachAccount = function (each) {
             var _this = this;
             return rxts_1.Observable.from(this.accounts)
@@ -141,7 +161,12 @@ var __extends = (this && this.__extends) || function (d, b) {
             this.flags = flags;
             this.service = service;
         }
-        AccessToken.prototype.getJson = function (url) {
+        AccessToken.prototype.toJson = function () {
+            return JSON.stringify(this, function (key, value) {
+                return key === 'service' ? undefined : value;
+            });
+        };
+        AccessToken.prototype.fetchSecuredResource = function (url) {
             var _this = this;
             return rxts_1.Observable.create(function (subscriber) {
                 var oauth = _this.service.oauth;
@@ -181,16 +206,16 @@ var __extends = (this && this.__extends) || function (d, b) {
                 subscriber.addSubscription(subscription);
             });
         };
-        AccessToken.prototype.getAccountList = function () {
+        AccessToken.prototype.fetchAccountList = function () {
             var _this = this;
-            return this.getJson(this.service.getAccountListUrl())
+            return this.fetchSecuredResource(this.service.getAccountListUrl())
                 .map(function (json) {
                 var accountsJson = json['json.accountListResponse']['response'];
                 var accounts = [];
                 for (var i = 0; i < accountsJson.length; i++) {
                     accounts.push(new Account(accountsJson[i], _this));
                 }
-                return new AccountList(accounts, _this);
+                return new AccountList(accounts, new Date(), _this);
             });
         };
         return AccessToken;

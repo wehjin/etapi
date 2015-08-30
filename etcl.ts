@@ -10,7 +10,7 @@
 
 
 import {Http,Observable,Subscriber,BooleanSubscription} from "rxts";
-import {Service, OauthRequestToken, Credentials, AccessToken, TokenError, AccountList} from "et";
+import {Service, OauthRequestToken, Credentials, AccessToken, TokenError, AccountList,Jsonable} from "et";
 import fs = require("fs");
 import open = require("open");
 import prompt = require("prompt");
@@ -49,10 +49,10 @@ function readJson(filepath : string) : Observable<Object> {
     });
 }
 
-var saveJson = function (json, filePath) {
+function saveJson<T extends Jsonable>(jsonable : T, filePath : string) : Observable<T> {
     return Observable.create((subscriber : Subscriber<Object>)=> {
         var subscription = new BooleanSubscription();
-        fs.writeFile(filePath, JSON.stringify(json), {
+        fs.writeFile(filePath, jsonable.toJson(), {
             mode: 0600
         }, (err : any)=> {
             if (subscription.isUnsubscribed()) {
@@ -62,11 +62,11 @@ var saveJson = function (json, filePath) {
                 subscriber.onError(err);
                 return;
             }
-            subscriber.onNext(json);
+            subscriber.onNext(jsonable);
             subscriber.onCompleted();
         });
     });
-};
+}
 
 function deleteJson(path) {
     return Observable.create((subscriber : Subscriber<boolean>)=> {
@@ -82,16 +82,6 @@ function deleteJson(path) {
             subscriber.onNext(true);
             subscriber.onCompleted();
         });
-    });
-}
-
-function saveAccessToken(accessToken : AccessToken) : Observable<AccessToken> {
-    return saveJson({
-        token: accessToken.token,
-        secret: accessToken.secret,
-        flags: accessToken.flags
-    }, accessTokenPath).map(()=> {
-        return accessToken;
     });
 }
 
@@ -130,15 +120,19 @@ function fetchAccessToken(service : Service) {
             return credentials.getAccessToken();
         })
         .flatMap((accessToken : AccessToken) : Observable<AccessToken>=> {
-            return saveAccessToken(accessToken);
+            return saveJson(accessToken, accessTokenPath);
         });
 }
 
-function readOrFetchAccessToken(service : Service) : Observable<AccessToken> {
+var readAccessToken = function (service : Service) {
     return readJson(accessTokenPath)
         .map((json : Object)=> {
             return new AccessToken(json['token'], json['secret'], json['flags'], service);
-        })
+        });
+};
+
+function readOrFetchAccessToken(service : Service) : Observable<AccessToken> {
+    return readAccessToken(service)
         .onErrorResumeNext((e)=> {
             if (e instanceof NoEntryError) {
                 return fetchAccessToken(service);
@@ -148,24 +142,16 @@ function readOrFetchAccessToken(service : Service) : Observable<AccessToken> {
         });
 }
 
-function main() {
-    var setup = readJson(setupPath);
-    var loadService = setup.map((setup : Object) : Service => {
-        return new Service(setup);
-    });
-    var accessToken = loadService
-        .flatMap((service : Service) : Observable<AccessToken>=> {
-            return readOrFetchAccessToken(service);
-        });
-    var accountList = accessToken
+function fetchAccountList(accessToken : Observable<AccessToken>) : Observable<AccountList> {
+    var fetchBaseAccountList = accessToken
         .flatMap((accessToken : AccessToken)=> {
-            return accessToken.getAccountList();
+            return accessToken.fetchAccountList();
         });
-    accountList
+    return fetchBaseAccountList
         .onErrorResumeNext((e)=> {
             if (e instanceof TokenError) {
                 return deleteJson(accessTokenPath).flatMap(()=> {
-                    return accountList;
+                    return fetchBaseAccountList;
                 })
             } else {
                 return Observable.error(e);
@@ -177,10 +163,42 @@ function main() {
         .flatMap((accountList : AccountList)=> {
             return accountList.refreshPositions();
         })
-        .flatMap((x)=> {
-            return Observable.from(x.accounts);
+        .flatMap((accountList : AccountList)=> {
+            return saveJson(accountList, accountListPath)
+        });
+}
+
+function readAccountList(accessToken : Observable<AccessToken>) : Observable<AccountList> {
+    return accessToken
+        .flatMap((accessToken : AccessToken)=> {
+            return readJson(accountListPath)
+                .map((jsonAccountList : Object)=> {
+                    return AccountList.fromJson(jsonAccountList, accessToken);
+                });
+        });
+}
+
+function readOrFetchAccountList(accessToken : Observable<AccessToken>) : Observable<AccountList> {
+    return readAccountList(accessToken)
+        .onErrorResumeNext((e)=> {
+            if (e instanceof NoEntryError) {
+                return fetchAccountList(accessToken);
+            } else {
+                return Observable.error(e);
+            }
+        });
+}
+
+function main() {
+    var accessToken = readJson(setupPath)
+        .map((setup : Object) : Service => {
+            return new Service(setup);
         })
-        .subscribe((result)=> {
+        .flatMap((service : Service) : Observable<AccessToken>=> {
+            return readOrFetchAccessToken(service);
+        });
+    var accountList = readOrFetchAccountList(accessToken);
+    accountList.subscribe((result)=> {
             console.log(result);
         }, (e)=> {
             console.error(e);
