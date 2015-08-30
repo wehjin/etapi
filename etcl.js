@@ -230,6 +230,13 @@
             this.addPosition(cashPosition);
             this.accountList = accountList;
         }
+        Assets.prototype.getAssetList = function () {
+            var assets = {};
+            for (var key in this.assets) {
+                assets.push(this.assets[key]);
+            }
+            return assets;
+        };
         Assets.prototype.addPosition = function (position) {
             var productId = position['productId'];
             if (!productId) {
@@ -266,6 +273,41 @@
             return report;
         };
         return Assets;
+    })();
+    var UnassignedAssetError = (function () {
+        function UnassignedAssetError(asset) {
+            this.asset = asset;
+            this.name = "UnassignedAsset";
+            this.message = "No or invalid target assigned to asset: " + asset;
+        }
+        return UnassignedAssetError;
+    })();
+    var Progress = (function () {
+        function Progress(targets, assignments, assets) {
+            this.scores = {};
+            for (var i = 0; i < targets.length; i++) {
+                var target = targets[i];
+                this.scores[target.targetId] = {
+                    target: target,
+                    assets: []
+                };
+            }
+            var assetList = assets.getAssetList();
+            for (var i = 0; i < assetList.length; i++) {
+                var asset = assetList[i];
+                var assetId = asset.assetId;
+                var targetId = assignments[assetId];
+                if (!targetId) {
+                    throw new UnassignedAssetError(asset);
+                }
+                var score = this.scores[targetId];
+                if (!score) {
+                    throw new UnassignedAssetError(asset);
+                }
+                score.assets.push(asset);
+            }
+        }
+        return Progress;
     })();
     function main() {
         var accessToken = readJson(setupPath)

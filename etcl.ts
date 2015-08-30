@@ -247,6 +247,14 @@ class Assets {
         this.accountList = accountList;
     }
 
+    getAssetList() : Asset[] {
+        var assets = <Asset[]>{};
+        for (var key in this.assets) {
+            assets.push(this.assets[key]);
+        }
+        return assets;
+    }
+
     private addPosition(position : Object) {
         var productId = position['productId'];
         if (!productId) {
@@ -282,6 +290,55 @@ class Assets {
         }
         report += ":: " + this.accountList.date;
         return report;
+    }
+}
+
+class UnassignedAssetError implements Error {
+    name : string = "UnassignedAsset";
+    message : string;
+
+    constructor(private asset : Asset) {
+        this.message = "No or invalid target assigned to asset: " + asset;
+    }
+}
+
+interface Target {
+    targetId : string;
+    name : string;
+    fraction : number;
+}
+
+interface Score {
+    target : Target;
+    assets : Asset[];
+}
+
+class Progress {
+    scores : { [targetId:string]:Score } = {};
+
+    constructor(targets : Target[], assignments : Object, assets : Assets) {
+        for (var i = 0; i < targets.length; i++) {
+            var target = targets[i];
+            this.scores[target.targetId] = {
+                target: target,
+                assets: []
+            };
+        }
+
+        var assetList = assets.getAssetList();
+        for (var i = 0; i < assetList.length; i++) {
+            var asset = assetList[i];
+            var assetId = asset.assetId;
+            var targetId = assignments[assetId];
+            if (!targetId) {
+                throw new UnassignedAssetError(asset);
+            }
+            var score = this.scores[targetId];
+            if (!score) {
+                throw new UnassignedAssetError(asset);
+            }
+            score.assets.push(asset);
+        }
     }
 }
 
