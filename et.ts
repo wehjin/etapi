@@ -9,12 +9,24 @@
 import Oauth = require("oauth");
 import {Observable,Subscriber, BooleanSubscription} from "rxts";
 
-export class TokenExpiredError implements Error {
-    name : string = "TokenExpired";
+export class TokenError implements Error {
+    name : string;
     message : string;
 
-    constructor(message : string) {
+    constructor(name : string, message : string) {
+        this.name = name;
         this.message = message;
+    }
+}
+export class TokenExpiredError extends TokenError implements Error {
+    constructor(message : string) {
+        super("TokenExpired", message);
+    }
+}
+
+export class TokenRejectedError extends TokenError implements Error {
+    constructor(message : string) {
+        super("TokenRejected", message);
     }
 }
 
@@ -139,6 +151,8 @@ export class AccessToken {
                                 if (message) {
                                     if (message === "oauth_problem=token_expired") {
                                         send = new TokenExpiredError(message);
+                                    } else if (message === "oauth_problem=token_rejected") {
+                                        send = new TokenRejectedError(message);
                                     } else {
                                         send = new Error(message);
                                     }

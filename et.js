@@ -2,6 +2,12 @@
  * @author  wehjin
  * @since   8/28/15
  */
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    __.prototype = b.prototype;
+    d.prototype = new __();
+};
 (function (deps, factory) {
     if (typeof module === 'object' && typeof module.exports === 'object') {
         var v = factory(require, exports); if (v !== undefined) module.exports = v;
@@ -14,14 +20,30 @@
     ///<reference path="node_modules/rxts/rxts.d.ts"/>
     var Oauth = require("oauth");
     var rxts_1 = require("rxts");
-    var TokenExpiredError = (function () {
-        function TokenExpiredError(message) {
-            this.name = "TokenExpired";
+    var TokenError = (function () {
+        function TokenError(name, message) {
+            this.name = name;
             this.message = message;
         }
-        return TokenExpiredError;
+        return TokenError;
     })();
+    exports.TokenError = TokenError;
+    var TokenExpiredError = (function (_super) {
+        __extends(TokenExpiredError, _super);
+        function TokenExpiredError(message) {
+            _super.call(this, "TokenExpired", message);
+        }
+        return TokenExpiredError;
+    })(TokenError);
     exports.TokenExpiredError = TokenExpiredError;
+    var TokenRejectedError = (function (_super) {
+        __extends(TokenRejectedError, _super);
+        function TokenRejectedError(message) {
+            _super.call(this, "TokenRejected", message);
+        }
+        return TokenRejectedError;
+    })(TokenError);
+    exports.TokenRejectedError = TokenRejectedError;
     var Account = (function () {
         function Account(json, accessToken) {
             this.accessToken = accessToken;
@@ -139,6 +161,9 @@
                                     if (message) {
                                         if (message === "oauth_problem=token_expired") {
                                             send = new TokenExpiredError(message);
+                                        }
+                                        else if (message === "oauth_problem=token_rejected") {
+                                            send = new TokenRejectedError(message);
                                         }
                                         else {
                                             send = new Error(message);

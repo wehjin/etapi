@@ -10,7 +10,7 @@
 
 
 import {Http,Observable,Subscriber,BooleanSubscription} from "rxts";
-import {Service, OauthRequestToken, Credentials, AccessToken, TokenExpiredError, AccountList} from "et";
+import {Service, OauthRequestToken, Credentials, AccessToken, TokenError, AccountList} from "et";
 import fs = require("fs");
 import open = require("open");
 import prompt = require("prompt");
@@ -19,6 +19,7 @@ var homePath = process.env['HOME'];
 var prefPath = homePath + '/.etcl';
 var setupPath = prefPath + '/setup.json';
 var accessTokenPath = prefPath + "/accessToken.json";
+var accountListPath = prefPath + "/accountList.json";
 
 class NoEntryError implements Error {
     name : string = "NoEntryError";
@@ -48,10 +49,29 @@ function readJson(filepath : string) : Observable<Object> {
     });
 }
 
-function deleteAccessToken() : Observable<boolean> {
+var saveJson = function (json, filePath) {
+    return Observable.create((subscriber : Subscriber<Object>)=> {
+        var subscription = new BooleanSubscription();
+        fs.writeFile(filePath, JSON.stringify(json), {
+            mode: 0600
+        }, (err : any)=> {
+            if (subscription.isUnsubscribed()) {
+                return;
+            }
+            if (err) {
+                subscriber.onError(err);
+                return;
+            }
+            subscriber.onNext(json);
+            subscriber.onCompleted();
+        });
+    });
+};
+
+function deleteJson(path) {
     return Observable.create((subscriber : Subscriber<boolean>)=> {
         var subscription = new BooleanSubscription();
-        fs.unlink(accessTokenPath, (err : any)=> {
+        fs.unlink(path, (err : any)=> {
             if (subscription.isUnsubscribed()) {
                 return;
             }
@@ -66,26 +86,12 @@ function deleteAccessToken() : Observable<boolean> {
 }
 
 function saveAccessToken(accessToken : AccessToken) : Observable<AccessToken> {
-    return Observable.create((subscriber : Subscriber<AccessToken>)=> {
-        var subscription = new BooleanSubscription();
-        var saveJson = JSON.stringify({
-            token: accessToken.token,
-            secret: accessToken.secret,
-            flags: accessToken.flags
-        });
-        fs.writeFile(accessTokenPath, saveJson, {
-            mode: 0600
-        }, (err : any)=> {
-            if (subscription.isUnsubscribed()) {
-                return;
-            }
-            if (err) {
-                subscriber.onError(err);
-                return;
-            }
-            subscriber.onNext(accessToken);
-            subscriber.onCompleted();
-        });
+    return saveJson({
+        token: accessToken.token,
+        secret: accessToken.secret,
+        flags: accessToken.flags
+    }, accessTokenPath).map(()=> {
+        return accessToken;
     });
 }
 
@@ -142,35 +148,42 @@ function readOrFetchAccessToken(service : Service) : Observable<AccessToken> {
         });
 }
 
-var setup = readJson(setupPath);
-var loadService = setup.map((setup : Object) : Service => {
-    return new Service(setup);
-});
-var getAccountList = loadService
-    .flatMap((service : Service) : Observable<AccessToken>=> {
-        return readOrFetchAccessToken(service);
-    })
-    .flatMap((accessToken : AccessToken)=> {
-        return accessToken.getAccountList();
+function main() {
+    var setup = readJson(setupPath);
+    var loadService = setup.map((setup : Object) : Service => {
+        return new Service(setup);
     });
-getAccountList
-    .onErrorResumeNext((e)=> {
-        if (e instanceof TokenExpiredError) {
-            return deleteAccessToken().flatMap(()=> {
-                return getAccountList;
-            })
-        } else {
-            return Observable.error(e);
-        }
-    })
-    .flatMap((accountList : AccountList)=> {
-        return accountList.refreshBalances();
-    })
-    .flatMap((accountList : AccountList)=> {
-        return accountList.refreshPositions();
-    })
-    .subscribe((result)=> {
-        console.log(result);
-    }, (e)=> {
-        console.error(e);
-    });
+    var accessToken = loadService
+        .flatMap((service : Service) : Observable<AccessToken>=> {
+            return readOrFetchAccessToken(service);
+        });
+    var accountList = accessToken
+        .flatMap((accessToken : AccessToken)=> {
+            return accessToken.getAccountList();
+        });
+    accountList
+        .onErrorResumeNext((e)=> {
+            if (e instanceof TokenError) {
+                return deleteJson(accessTokenPath).flatMap(()=> {
+                    return accountList;
+                })
+            } else {
+                return Observable.error(e);
+            }
+        })
+        .flatMap((accountList : AccountList)=> {
+            return accountList.refreshBalances();
+        })
+        .flatMap((accountList : AccountList)=> {
+            return accountList.refreshPositions();
+        })
+        .flatMap((x)=> {
+            return Observable.from(x.accounts);
+        })
+        .subscribe((result)=> {
+            console.log(result);
+        }, (e)=> {
+            console.error(e);
+        });
+}
+main();
