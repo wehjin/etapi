@@ -41,7 +41,7 @@ export class Account {
     netAccountValue : number;
     registrationType : string;
     balance : Object;
-    positions : Object;
+    positions : Object[];
 
     constructor(json : Object, public accessToken : AccessToken) {
         this.accountDescription = json['accountDesc'];

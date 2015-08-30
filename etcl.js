@@ -121,12 +121,12 @@
             return saveJson(accessToken, accessTokenPath);
         });
     }
-    var readAccessToken = function (service) {
+    function readAccessToken(service) {
         return readJson(accessTokenPath)
             .map(function (json) {
             return new et_1.AccessToken(json['token'], json['secret'], json['flags'], service);
         });
-    };
+    }
     function readOrFetchAccessToken(service) {
         return readAccessToken(service)
             .onErrorResumeNext(function (e) {
@@ -184,6 +184,73 @@
             }
         });
     }
+    var Asset = (function () {
+        function Asset(assetId, symbol, typeCode) {
+            this.positions = [];
+            this.quantity = 0;
+            this.marketValue = 0;
+            this.currentPrice = 0;
+            this.descriptions = [];
+            this.assetId = assetId;
+            this.symbol = symbol;
+            this.typeCode = typeCode;
+        }
+        Asset.prototype.addPosition = function (position) {
+            this.positions.push(position);
+            this.quantity += parseFloat(position['qty']);
+            this.marketValue += parseFloat(position['marketValue']);
+            this.currentPrice = parseFloat(position['currentPrice']);
+            this.descriptions.push(position['description']);
+        };
+        Asset.prototype.report = function () {
+            return this.symbol + ":" + this.typeCode + ": $ " + this.marketValue.toFixed(2) + "\n";
+        };
+        return Asset;
+    })();
+    var Assets = (function () {
+        function Assets() {
+            this.assets = {};
+        }
+        Assets.prototype.addPosition = function (position) {
+            var productId = position['productId'];
+            if (!productId) {
+                console.error("Position missing product id:", position);
+                return;
+            }
+            var symbol = productId['symbol'];
+            var typeCode = productId['typeCode'];
+            if (typeCode === 'OPTN') {
+                console.log("Skipping option position: " + symbol);
+                return;
+            }
+            var assetId = JSON.stringify({
+                symbol: symbol,
+                typeCode: typeCode
+            });
+            var asset = this.assets[assetId];
+            if (!asset) {
+                asset = new Asset(assetId, symbol, typeCode);
+                this.assets[assetId] = asset;
+            }
+            asset.addPosition(position);
+        };
+        Assets.prototype.report = function () {
+            var report = '';
+            var array = [];
+            for (var assetId in this.assets) {
+                array.push(this.assets[assetId]);
+            }
+            array.sort(function (a, b) {
+                return a.symbol.localeCompare(b.symbol);
+            });
+            for (var i = 0; i < array.length; i++) {
+                var asset = array[i];
+                report += asset.report();
+            }
+            return report;
+        };
+        return Assets;
+    })();
     function main() {
         var accessToken = readJson(setupPath)
             .map(function (setup) {
@@ -192,15 +259,20 @@
             .flatMap(function (service) {
             return readOrFetchAccessToken(service);
         });
-        var accountList = readOrFetchAccountList(accessToken);
-        accountList
-            .map(function (accountList) {
-            return accountList.getCash();
+        var assets = new Assets();
+        readOrFetchAccountList(accessToken)
+            .flatMap(function (accountList) {
+            return rxts_1.Observable.from(accountList.accounts);
+        })
+            .flatMap(function (account) {
+            return rxts_1.Observable.from(account.positions);
         })
             .subscribe(function (result) {
-            console.log(result);
+            assets.addPosition(result);
         }, function (e) {
             console.error(e);
+        }, function () {
+            console.log(assets.report());
         });
     }
     main();

@@ -111,7 +111,7 @@ function askHumanForAccessCredentials(requestToken : OauthRequestToken) : Observ
     });
 }
 
-function fetchAccessToken(service : Service) {
+function fetchAccessToken(service : Service) : Observable<AccessToken> {
     return service.fetchRequestToken()
         .flatMap((requestToken : OauthRequestToken)=> {
             return askHumanForAccessCredentials(requestToken);
@@ -124,12 +124,12 @@ function fetchAccessToken(service : Service) {
         });
 }
 
-var readAccessToken = function (service : Service) {
+function readAccessToken(service : Service) : Observable<AccessToken> {
     return readJson(accessTokenPath)
         .map((json : Object)=> {
             return new AccessToken(json['token'], json['secret'], json['flags'], service);
         });
-};
+}
 
 function readOrFetchAccessToken(service : Service) : Observable<AccessToken> {
     return readAccessToken(service)
@@ -189,6 +189,82 @@ function readOrFetchAccountList(accessToken : Observable<AccessToken>) : Observa
         });
 }
 
+class Asset {
+    assetId : string;
+    positions : Object[] = [];
+    symbol : string;
+    typeCode : string;
+    quantity : number = 0;
+    marketValue : number = 0;
+    currentPrice : number = 0;
+    descriptions : string[] = [];
+
+    constructor(assetId : string, symbol : string, typeCode : string) {
+        this.assetId = assetId;
+        this.symbol = symbol;
+        this.typeCode = typeCode;
+    }
+
+    addPosition(position : Object) : void {
+        this.positions.push(position);
+        this.quantity += parseFloat(position['qty']);
+        this.marketValue += parseFloat(position['marketValue']);
+        this.currentPrice = parseFloat(position['currentPrice']);
+        this.descriptions.push(position['description']);
+    }
+
+    report() : string {
+        return this.symbol + ":" + this.typeCode + ": $ " + this.marketValue.toFixed(2) + "\n";
+    }
+}
+
+interface AssetMap {
+    [index:string]:Asset;
+}
+class Assets {
+    assets : AssetMap = {};
+
+    addPosition(position : Object) {
+        var productId = position['productId'];
+        if (!productId) {
+            console.error("Position missing product id:", position);
+            return;
+        }
+        var symbol = productId['symbol'];
+        var typeCode = productId['typeCode'];
+        if (typeCode === 'OPTN') {
+            console.log("Skipping option position: " + symbol);
+            return;
+        }
+        var assetId = JSON.stringify({
+            symbol: symbol,
+            typeCode: typeCode
+        });
+        var asset = this.assets[assetId];
+        if (!asset) {
+            asset = new Asset(assetId, symbol, typeCode);
+            this.assets[assetId] = asset;
+        }
+        asset.addPosition(position);
+    }
+
+    report() {
+        var report = '';
+        var array : Asset[] = [];
+        for (var assetId in this.assets) {
+            array.push(this.assets[assetId]);
+        }
+        array.sort((a : Asset, b : Asset)=> {
+            return a.symbol.localeCompare(b.symbol);
+        });
+        for (var i = 0; i < array.length; i++) {
+            var asset = array[i];
+            report += asset.report();
+        }
+        return report;
+    }
+}
+
 function main() {
     var accessToken = readJson(setupPath)
         .map((setup : Object) : Service => {
@@ -197,15 +273,21 @@ function main() {
         .flatMap((service : Service) : Observable<AccessToken>=> {
             return readOrFetchAccessToken(service);
         });
-    var accountList = readOrFetchAccountList(accessToken);
-    accountList
-        .map((accountList)=> {
-            return accountList.getCash();
+
+    var assets = new Assets();
+    readOrFetchAccountList(accessToken)
+        .flatMap((accountList)=> {
+            return Observable.from(accountList.accounts);
+        })
+        .flatMap((account)=> {
+            return Observable.from(account.positions);
         })
         .subscribe((result)=> {
-            console.log(result);
+            assets.addPosition(result);
         }, (e)=> {
             console.error(e);
+        }, ()=> {
+            console.log(assets.report());
         });
 }
 main();
