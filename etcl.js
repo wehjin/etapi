@@ -24,6 +24,9 @@
     var setupPath = prefPath + '/setup.json';
     var accessTokenPath = prefPath + "/accessToken.json";
     var accountListPath = prefPath + "/accountList.json";
+    var targetsPath = prefPath + "/targets.json";
+    var assignmentsPath = prefPath + "/assignments.json";
+    var accountIdSeparator = ":";
     var NoEntryError = (function () {
         function NoEntryError(message) {
             this.name = "NoEntryError";
@@ -48,6 +51,24 @@
             });
         }).map(function (s) {
             return JSON.parse(s);
+        });
+    }
+    function saveAny(toSave, filePath) {
+        return rxts_1.Observable.create(function (subscriber) {
+            var subscription = new rxts_1.BooleanSubscription();
+            fs.writeFile(filePath, JSON.stringify(toSave), {
+                mode: 0600
+            }, function (err) {
+                if (subscription.isUnsubscribed()) {
+                    return;
+                }
+                if (err) {
+                    subscriber.onError(err);
+                    return;
+                }
+                subscriber.onNext(toSave);
+                subscriber.onCompleted();
+            });
         });
     }
     function saveJson(jsonable, filePath) {
@@ -230,8 +251,14 @@
             this.addPosition(cashPosition);
             this.accountList = accountList;
         }
+        Assets.getAssetId = function (symbol, typeCode) {
+            return JSON.stringify({
+                symbol: symbol,
+                typeCode: typeCode
+            });
+        };
         Assets.prototype.getAssetList = function () {
-            var assets = {};
+            var assets = [];
             for (var key in this.assets) {
                 assets.push(this.assets[key]);
             }
@@ -245,10 +272,7 @@
             }
             var symbol = productId['symbol'];
             var typeCode = productId['typeCode'];
-            var assetId = JSON.stringify({
-                symbol: symbol,
-                typeCode: typeCode
-            });
+            var assetId = Assets.getAssetId(symbol, typeCode);
             var asset = this.assets[assetId];
             if (!asset) {
                 asset = new Asset(assetId, symbol, typeCode);
@@ -277,8 +301,9 @@
     var UnassignedAssetError = (function () {
         function UnassignedAssetError(asset) {
             this.asset = asset;
-            this.name = "UnassignedAsset";
-            this.message = "No or invalid target assigned to asset: " + asset;
+            this.name = "UnassignedAssetError";
+            this.assetId = asset.symbol + accountIdSeparator + asset.typeCode;
+            this.message = "No or invalid target for asset: " + this.assetId;
         }
         return UnassignedAssetError;
     })();
@@ -309,7 +334,7 @@
         }
         return Progress;
     })();
-    function main() {
+    function getAssets() {
         var accessToken = readJson(setupPath)
             .map(function (setup) {
             return new et_1.Service(setup);
@@ -317,18 +342,149 @@
             .flatMap(function (service) {
             return readOrFetchAccessToken(service);
         });
-        readOrFetchAccountList(accessToken)
+        return readOrFetchAccountList(accessToken)
             .map(function (accountList) {
             return new Assets(accountList);
+        });
+    }
+    function readTargets() {
+        return readJson(targetsPath)
+            .map(function (json) {
+            return json;
         })
-            .map(function (assets) {
-            return assets.report();
-        })
-            .subscribe(function (result) {
-            console.log(result);
-        }, function (e) {
-            console.error(e);
-        }, function () {
+            .onErrorResumeNext(function (e) {
+            return rxts_1.Observable.error(new Error("No targets - call setTarget"));
+        });
+    }
+    function readAssignments() {
+        return readJson(assignmentsPath)
+            .onErrorResumeNext(function (e) {
+            return (e instanceof NoEntryError) ? rxts_1.Observable.from([{}]) : rxts_1.Observable.error(e);
+        });
+    }
+    var argIndex = 2;
+    var commands = [];
+    var currentCommand;
+    var allArguments = {};
+    function describeCommand(name, f) {
+        commands.push(name);
+        if (process.argv[argIndex] == name) {
+            argIndex++;
+            currentCommand = name;
+            allArguments[currentCommand] = [];
+            f();
+        }
+    }
+    function describeArgument(name, example, f) {
+        allArguments[currentCommand].push([name, example]);
+        if (argIndex === process.argv.length) {
+            throw "missing argument";
+        }
+        var arg = (typeof example === 'number') ?
+            parseFloat(process.argv[argIndex++]) :
+            process.argv[argIndex++];
+        f(arg);
+    }
+    function describeProgram(name, f) {
+        try {
+            f();
+        }
+        catch (e) {
+            if (e == "missing argument") {
+                var argumentString = "";
+                var commandArguments = allArguments[currentCommand];
+                for (var i = 0; i < commandArguments.length; i++) {
+                    if (i > 0) {
+                        argumentString += " ";
+                    }
+                    argumentString += "<" + commandArguments[i][0] + ">";
+                }
+                console.log("Usage: " + name + " " + currentCommand + " " + argumentString);
+            }
+        }
+        if (argIndex === 2) {
+            console.log("Usage: " + name + "<command>");
+            console.log("Commands: ");
+            for (var c in commands) {
+                console.log("  " + commands[c]);
+            }
+        }
+    }
+    function main() {
+        describeProgram("etcl", function () {
+            describeCommand("assignment", function () {
+                var assetId;
+                var targetId;
+                describeArgument("assetId", "GOOG|EQ", function (arg) {
+                    var symbolAndTypeCode = arg.split(accountIdSeparator);
+                    assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
+                });
+                describeArgument("targetId", "stocks", function (arg) {
+                    targetId = arg;
+                });
+                readAssignments()
+                    .map(function (assignments) {
+                    assignments[assetId] = targetId;
+                    return assignments;
+                })
+                    .flatMap(function (assignments) {
+                    return saveAny(assignments, assignmentsPath);
+                })
+                    .subscribe(function (assignments) {
+                    console.log(assignments);
+                }, function (e) {
+                    console.error(e);
+                });
+            });
+            describeCommand("setTarget", function () {
+                var targetName;
+                var targetFraction;
+                describeArgument("targetId", "stocks", function (arg) {
+                    targetName = arg;
+                });
+                describeArgument("fraction", ".7", function (arg) {
+                    targetFraction = arg;
+                });
+                readTargets()
+                    .onErrorResumeNext(function (e) {
+                    return rxts_1.Observable.from([[]]);
+                })
+                    .map(function (targets) {
+                    targets.push({
+                        targetId: targetName,
+                        fraction: targetFraction
+                    });
+                    return targets;
+                })
+                    .flatMap(function (targets) {
+                    return saveAny(targets, targetsPath);
+                })
+                    .subscribe(function (targets) {
+                    console.log(targets);
+                }, function (e) {
+                    console.error(e);
+                });
+            });
+            describeCommand("report", function () {
+                var assets = getAssets();
+                var targets = readTargets();
+                var assignments = readAssignments();
+                rxts_1.Observable.zip3(targets, assignments, assets)
+                    .map(function (zip) {
+                    return new Progress(zip[0], zip[1], zip[2]);
+                })
+                    .subscribe(function (result) {
+                    console.log(result);
+                }, function (e) {
+                    if (e instanceof UnassignedAssetError) {
+                        console.error("Unassigned asset " + e.assetId + ", call assignment");
+                    }
+                    else {
+                        console.error(e);
+                    }
+                }, function () {
+                });
+            });
         });
     }
     main();

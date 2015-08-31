@@ -20,6 +20,9 @@ var prefPath = homePath + '/.etcl';
 var setupPath = prefPath + '/setup.json';
 var accessTokenPath = prefPath + "/accessToken.json";
 var accountListPath = prefPath + "/accountList.json";
+var targetsPath = prefPath + "/targets.json";
+var assignmentsPath = prefPath + "/assignments.json";
+var accountIdSeparator = ":";
 
 class NoEntryError implements Error {
     name : string = "NoEntryError";
@@ -30,7 +33,7 @@ class NoEntryError implements Error {
     }
 }
 
-function readJson(filepath : string) : Observable<Object> {
+function readJson(filepath : string) : Observable<any> {
     return Observable.create((subscriber : Subscriber<string>)=> {
         fs.readFile(filepath, function (err, data) {
             if (err) {
@@ -46,6 +49,25 @@ function readJson(filepath : string) : Observable<Object> {
         });
     }).map((s : string)=> {
         return JSON.parse(s);
+    });
+}
+
+function saveAny<T>(toSave : T, filePath : string) : Observable<T> {
+    return Observable.create((subscriber : Subscriber<Object>)=> {
+        var subscription = new BooleanSubscription();
+        fs.writeFile(filePath, JSON.stringify(toSave), {
+            mode: 0600
+        }, (err : any)=> {
+            if (subscription.isUnsubscribed()) {
+                return;
+            }
+            if (err) {
+                subscriber.onError(err);
+                return;
+            }
+            subscriber.onNext(toSave);
+            subscriber.onCompleted();
+        });
     });
 }
 
@@ -247,8 +269,15 @@ class Assets {
         this.accountList = accountList;
     }
 
+    static getAssetId(symbol : string, typeCode : string) : string {
+        return JSON.stringify({
+            symbol: symbol,
+            typeCode: typeCode
+        });
+    }
+
     getAssetList() : Asset[] {
-        var assets = <Asset[]>{};
+        var assets = [];
         for (var key in this.assets) {
             assets.push(this.assets[key]);
         }
@@ -263,10 +292,7 @@ class Assets {
         }
         var symbol = productId['symbol'];
         var typeCode = productId['typeCode'];
-        var assetId = JSON.stringify({
-            symbol: symbol,
-            typeCode: typeCode
-        });
+        var assetId = Assets.getAssetId(symbol, typeCode);
         var asset = this.assets[assetId];
         if (!asset) {
             asset = new Asset(assetId, symbol, typeCode);
@@ -294,17 +320,18 @@ class Assets {
 }
 
 class UnassignedAssetError implements Error {
-    name : string = "UnassignedAsset";
+    name : string = "UnassignedAssetError";
     message : string;
+    assetId : string;
 
     constructor(private asset : Asset) {
-        this.message = "No or invalid target assigned to asset: " + asset;
+        this.assetId = asset.symbol + accountIdSeparator + asset.typeCode;
+        this.message = "No or invalid target for asset: " + this.assetId;
     }
 }
 
 interface Target {
     targetId : string;
-    name : string;
     fraction : number;
 }
 
@@ -342,7 +369,7 @@ class Progress {
     }
 }
 
-function main() {
+function getAssets() : Observable<Assets> {
     var accessToken = readJson(setupPath)
         .map((setup : Object) : Service => {
             return new Service(setup);
@@ -350,19 +377,154 @@ function main() {
         .flatMap((service : Service) : Observable<AccessToken>=> {
             return readOrFetchAccessToken(service);
         });
-
-    readOrFetchAccountList(accessToken)
+    return readOrFetchAccountList(accessToken)
         .map((accountList)=> {
             return new Assets(accountList);
-        })
-        .map((assets)=> {
-            return assets.report();
-        })
-        .subscribe((result)=> {
-            console.log(result);
-        }, (e)=> {
-            console.error(e);
-        }, ()=> {
         });
+}
+
+function readTargets() : Observable<Target[]> {
+    return readJson(targetsPath)
+        .map((json) : Target[]=> {
+            return json;
+        })
+        .onErrorResumeNext((e)=> {
+            return Observable.error(new Error("No targets - call setTarget"));
+        })
+}
+
+function readAssignments() : Observable<Object> {
+    return readJson(assignmentsPath)
+        .onErrorResumeNext((e)=> {
+            return (e instanceof NoEntryError) ? Observable.from([{}]) : Observable.error(e);
+        });
+}
+
+var argIndex = 2;
+var commands = [];
+var currentCommand : string;
+var allArguments = {};
+function describeCommand(name : string, f : ()=>void) {
+    commands.push(name);
+    if (process.argv[argIndex] == name) {
+        argIndex++;
+        currentCommand = name;
+        allArguments[currentCommand] = [];
+        f();
+    }
+}
+
+function describeArgument(name : string, example : any, f : (arg)=>void) {
+    allArguments[currentCommand].push([name, example]);
+    if (argIndex === process.argv.length) {
+        throw "missing argument";
+    }
+    var arg = (typeof example === 'number') ?
+        parseFloat(process.argv[argIndex++]) :
+        process.argv[argIndex++];
+    f(arg);
+}
+
+function describeProgram(name : string, f : ()=>void) {
+    try {
+        f();
+    } catch (e) {
+        if (e == "missing argument") {
+            var argumentString = "";
+            var commandArguments = allArguments[currentCommand];
+            for (var i = 0; i < commandArguments.length; i++) {
+                if (i > 0) {
+                    argumentString += " ";
+                }
+                argumentString += "<" + commandArguments[i][0] + ">";
+            }
+            console.log("Usage: " + name + " " + currentCommand + " " + argumentString);
+        }
+    }
+    if (argIndex === 2) {
+        console.log("Usage: " + name + "<command>");
+        console.log("Commands: ");
+        for (var c in commands) {
+            console.log("  " + commands[c]);
+        }
+    }
+}
+
+function main() {
+    describeProgram("etcl", ()=> {
+        describeCommand("assignment", ()=> {
+            var assetId;
+            var targetId;
+            describeArgument("assetId", "GOOG|EQ", (arg)=> {
+                var symbolAndTypeCode = arg.split(accountIdSeparator);
+                assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
+            });
+            describeArgument("targetId", "stocks", (arg)=> {
+                targetId = arg;
+            });
+            readAssignments()
+                .map((assignments)=> {
+                    assignments[assetId] = targetId;
+                    return assignments;
+                })
+                .flatMap((assignments) => {
+                    return saveAny(assignments, assignmentsPath);
+                })
+                .subscribe((assignments)=> {
+                    console.log(assignments);
+                }, (e)=> {
+                    console.error(e);
+                });
+        });
+
+        describeCommand("setTarget", ()=> {
+            var targetName;
+            var targetFraction;
+            describeArgument("targetId", "stocks", (arg)=> {
+                targetName = arg;
+            });
+            describeArgument("fraction", ".7", (arg)=> {
+                targetFraction = arg;
+            });
+            readTargets()
+                .onErrorResumeNext((e)=> {
+                    return Observable.from([[]]);
+                })
+                .map((targets : Target[])=> {
+                    targets.push({
+                        targetId: targetName,
+                        fraction: targetFraction,
+                    });
+                    return targets;
+                })
+                .flatMap((targets : Target[])=> {
+                    return saveAny(targets, targetsPath);
+                })
+                .subscribe((targets)=> {
+                    console.log(targets);
+                }, (e)=> {
+                    console.error(e);
+                });
+        });
+        describeCommand("report", ()=> {
+            var assets = getAssets();
+            var targets = readTargets();
+            var assignments = readAssignments();
+            Observable.zip3(targets, assignments, assets)
+                .map((zip : [Target[],Object,Assets]) : Progress=> {
+                    return new Progress(zip[0], zip[1], zip[2]);
+                })
+                .subscribe((result)=> {
+                    console.log(result);
+                }, (e)=> {
+                    if (e instanceof UnassignedAssetError) {
+                        console.error("Unassigned asset " + e.assetId + ", call assignment");
+                    } else {
+                        console.error(e);
+                    }
+                }, ()=> {
+                });
+        });
+    });
 }
 main();
