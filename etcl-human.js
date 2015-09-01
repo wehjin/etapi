@@ -61,8 +61,10 @@
                 }
                 var selection = (parseInt(result['selection']) - 1);
                 if (selection < 0 || selection >= targetIds.length) {
-                    subscriber.onError(new Error("Out of range selection: " + (selection + 1) + " of " +
-                        targetIds.length));
+                    subscriber.onError(new Error("Selection " + (selection + 1) +
+                        " out of range [1.." + targetIds.length +
+                        "]"));
+                    return;
                 }
                 subscriber.onNext(targetIds[selection]);
                 subscriber.onCompleted();

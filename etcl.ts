@@ -382,10 +382,36 @@ function readTargets() : Observable<Target[]> {
         })
 }
 
+function readTargetIds() : Observable<string[]> {
+    return readTargets()
+        .map((targets : Target[])=> {
+            var targetIds : string[] = [];
+            for (var i = 0; i < targets.length; i++) {
+                targetIds.push(targets[i].targetId);
+            }
+            return targetIds;
+        });
+}
+
 function readAssignments() : Observable<Object> {
     return readJson(assignmentsPath)
         .onErrorResumeNext((e)=> {
             return (e instanceof NoEntryError) ? Observable.from([{}]) : Observable.error(e);
+        });
+}
+
+function writeAssignments(newAssignments : {[unassigendAssetId:string]:string}) : Observable<Object> {
+    return readAssignments()
+        .map((existingAssignments)=> {
+            for (var unassignedAssetId in newAssignments) {
+                var symbolAndTypeCode = unassignedAssetId.split(unassignedAssetIdSeparator);
+                var assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
+                existingAssignments[assetId] = newAssignments[unassignedAssetId];
+            }
+            return existingAssignments;
+        })
+        .flatMap((assignments) => {
+            return saveAny(assignments, assignmentsPath);
         });
 }
 
@@ -437,21 +463,6 @@ function describeProgram(name : string, f : ()=>void) {
             console.log("  " + commands[c]);
         }
     }
-}
-
-function writeAssignments(newAssignments : {[unassigendAssetId:string]:string}) : Observable<Object> {
-    return readAssignments()
-        .map((existingAssignments)=> {
-            for (var unassignedAssetId in newAssignments) {
-                var symbolAndTypeCode = unassignedAssetId.split(unassignedAssetIdSeparator);
-                var assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
-                existingAssignments[assetId] = newAssignments[unassignedAssetId];
-            }
-            return existingAssignments;
-        })
-        .flatMap((assignments) => {
-            return saveAny(assignments, assignmentsPath);
-        });
 }
 
 function main() {
@@ -514,14 +525,7 @@ function main() {
                     if (e instanceof UnassignedAssetError) {
                         var unassignedAssetIds : string[] = e.unassignedAssetIds;
                         console.log("Unassigned assets: ", unassignedAssetIds);
-                        return readTargets()
-                            .map((targets : Target[])=> {
-                                var targetIds : string[] = [];
-                                for (var i = 0; i < targets.length; i++) {
-                                    targetIds.push(targets[i].targetId);
-                                }
-                                return targetIds;
-                            })
+                        return readTargetIds()
                             .flatMap((targetIds)=> {
                                 return human.askForAssignments(unassignedAssetIds, targetIds);
                             })
@@ -531,20 +535,13 @@ function main() {
                             .flatMap((assignments)=> {
                                 return report;
                             });
+                    } else {
+                        return Observable.error(e);
                     }
-                    return Observable.error(e);
                 })
                 .subscribe((result)=> {
                     console.log(result.scores);
-                }, (e)=> {
-                    if (e instanceof UnassignedAssetError) {
-                        console.error("Unassigned assets " + e.unassignedAssetIds +
-                            ", call assignment");
-                    } else {
-                        console.error(e);
-                    }
-                }, ()=> {
-                });
+                }, console.error);
         });
     });
 }

@@ -344,10 +344,34 @@
             return rxts_1.Observable.error(new Error("No targets - call setTarget"));
         });
     }
+    function readTargetIds() {
+        return readTargets()
+            .map(function (targets) {
+            var targetIds = [];
+            for (var i = 0; i < targets.length; i++) {
+                targetIds.push(targets[i].targetId);
+            }
+            return targetIds;
+        });
+    }
     function readAssignments() {
         return readJson(assignmentsPath)
             .onErrorResumeNext(function (e) {
             return (e instanceof NoEntryError) ? rxts_1.Observable.from([{}]) : rxts_1.Observable.error(e);
+        });
+    }
+    function writeAssignments(newAssignments) {
+        return readAssignments()
+            .map(function (existingAssignments) {
+            for (var unassignedAssetId in newAssignments) {
+                var symbolAndTypeCode = unassignedAssetId.split(unassignedAssetIdSeparator);
+                var assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
+                existingAssignments[assetId] = newAssignments[unassignedAssetId];
+            }
+            return existingAssignments;
+        })
+            .flatMap(function (assignments) {
+            return saveAny(assignments, assignmentsPath);
         });
     }
     var argIndex = 2;
@@ -397,20 +421,6 @@
                 console.log("  " + commands[c]);
             }
         }
-    }
-    function writeAssignments(newAssignments) {
-        return readAssignments()
-            .map(function (existingAssignments) {
-            for (var unassignedAssetId in newAssignments) {
-                var symbolAndTypeCode = unassignedAssetId.split(unassignedAssetIdSeparator);
-                var assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
-                existingAssignments[assetId] = newAssignments[unassignedAssetId];
-            }
-            return existingAssignments;
-        })
-            .flatMap(function (assignments) {
-            return saveAny(assignments, assignmentsPath);
-        });
     }
     function main() {
         describeProgram("etcl", function () {
@@ -471,14 +481,7 @@
                     if (e instanceof UnassignedAssetError) {
                         var unassignedAssetIds = e.unassignedAssetIds;
                         console.log("Unassigned assets: ", unassignedAssetIds);
-                        return readTargets()
-                            .map(function (targets) {
-                            var targetIds = [];
-                            for (var i = 0; i < targets.length; i++) {
-                                targetIds.push(targets[i].targetId);
-                            }
-                            return targetIds;
-                        })
+                        return readTargetIds()
                             .flatMap(function (targetIds) {
                             return human.askForAssignments(unassignedAssetIds, targetIds);
                         })
@@ -489,20 +492,13 @@
                             return report;
                         });
                     }
-                    return rxts_1.Observable.error(e);
+                    else {
+                        return rxts_1.Observable.error(e);
+                    }
                 })
                     .subscribe(function (result) {
                     console.log(result.scores);
-                }, function (e) {
-                    if (e instanceof UnassignedAssetError) {
-                        console.error("Unassigned assets " + e.unassignedAssetIds +
-                            ", call assignment");
-                    }
-                    else {
-                        console.error(e);
-                    }
-                }, function () {
-                });
+                }, console.error);
             });
         });
     }
