@@ -14,10 +14,34 @@ import {Service, OauthRequestToken, Credentials, AccessToken, TokenError, Accoun
 import open = require("open");
 import prompt = require("prompt");
 
+export interface UnassignedAssetsMap {
+    [unassigendAssetId:string]:string
+}
 
-export function askForAssignment(assetId : string, targetIds : string[]) {
-    return Observable.create((subscriber : Subscriber<Object>)=> {
-        var description = "Allocation for " + assetId + "\nChoices";
+export function askForAssignments(unassignedAssetIds : string[],
+                                  targetIds : string[]) : Observable<UnassignedAssetsMap> {
+    var chain : Observable<UnassignedAssetsMap>;
+    for (var i = 0; i < unassignedAssetIds.length; i++) {
+        if (!chain) {
+            chain = askForAssignment({}, unassignedAssetIds[0], targetIds);
+            continue;
+        }
+        function chainAsk(chainIndex : number) : (newAssignments : UnassignedAssetsMap)=> Observable<UnassignedAssetsMap> {
+            return (newAssignments : UnassignedAssetsMap)=> {
+                var unassignedAssetId = unassignedAssetIds[chainIndex];
+                return askForAssignment(newAssignments, unassignedAssetId, targetIds);
+            }
+        }
+
+        chain = chain.flatMap(chainAsk(i));
+    }
+    return chain;
+}
+
+function askForAssignment(newAssignments : UnassignedAssetsMap, unassignedAssetId : string,
+                          targetIds : string[]) : Observable<UnassignedAssetsMap> {
+    return Observable.create((subscriber : Subscriber<string>)=> {
+        var description = "Allocation for " + unassignedAssetId + "\nChoices";
         for (var i = 0; i < targetIds.length; i++) {
             description += "\n  " + (i + 1) + ". " + targetIds[i];
         }
@@ -28,7 +52,7 @@ export function askForAssignment(assetId : string, targetIds : string[]) {
                 selection: {
                     description: description,
                     type: 'number',
-                    default: 1,
+                    'default': 1,
                     required: true,
                     pattern: /^\d+$/,
                     message: 'Selection must be a number'
@@ -39,11 +63,17 @@ export function askForAssignment(assetId : string, targetIds : string[]) {
                 subscriber.onError(err);
                 return;
             }
-            subscriber.onNext(targetIds[parseInt(result['selection']) - 1]);
+            var selection = (parseInt(result['selection']) - 1);
+            if (selection < 0 || selection >= targetIds.length) {
+                subscriber.onError(new Error("Out of range selection: " + (selection + 1) + " of " +
+                    targetIds.length));
+            }
+            subscriber.onNext(targetIds[selection]);
             subscriber.onCompleted();
         });
     }).map((targetId)=> {
-        return [assetId, targetId];
+        newAssignments[unassignedAssetId] = targetId;
+        return newAssignments;
     });
 }
 

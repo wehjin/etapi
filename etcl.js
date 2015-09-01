@@ -25,7 +25,7 @@
     var accountListPath = prefPath + "/accountList.json";
     var targetsPath = prefPath + "/targets.json";
     var assignmentsPath = prefPath + "/assignments.json";
-    var assetIdSeparator = ":";
+    var unassignedAssetIdSeparator = ":";
     var NoEntryError = (function () {
         function NoEntryError(message) {
             this.name = "NoEntryError";
@@ -276,11 +276,16 @@
         return Assets;
     })();
     var UnassignedAssetError = (function () {
-        function UnassignedAssetError(asset) {
-            this.asset = asset;
+        function UnassignedAssetError(assets) {
+            this.assets = assets;
             this.name = "UnassignedAssetError";
-            this.assetId = asset.symbol + assetIdSeparator + asset.typeCode;
-            this.message = "No or invalid target for asset: " + this.assetId;
+            this.unassignedAssetIds = [];
+            for (var i = 0; i < assets.length; i++) {
+                var asset = assets[i];
+                this.unassignedAssetIds.push(asset.symbol + unassignedAssetIdSeparator +
+                    asset.typeCode);
+            }
+            this.message = "No or invalid target for assets: " + this.unassignedAssetIds;
         }
         return UnassignedAssetError;
     })();
@@ -295,18 +300,24 @@
                 };
             }
             var assetList = assets.getAssetList();
+            var unassignedAssetsList = [];
             for (var i = 0; i < assetList.length; i++) {
                 var asset = assetList[i];
                 var assetId = asset.assetId;
                 var targetId = assignments[assetId];
                 if (!targetId) {
-                    throw new UnassignedAssetError(asset);
+                    unassignedAssetsList.push(asset);
+                    continue;
                 }
                 var score = this.scores[targetId];
                 if (!score) {
-                    throw new UnassignedAssetError(asset);
+                    unassignedAssetsList.push(asset);
+                    continue;
                 }
                 score.assets.push(asset);
+            }
+            if (unassignedAssetsList.length > 0) {
+                throw new UnassignedAssetError(unassignedAssetsList);
             }
         }
         return Progress;
@@ -387,16 +398,17 @@
             }
         }
     }
-    function writeAssignment(assignment) {
+    function writeAssignments(newAssignments) {
         return readAssignments()
-            .map(function (assignments) {
-            var symbolAndTypeCode = assignment[0].split(assetIdSeparator);
-            var assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
-            assignments[assetId] = assignment[1];
-            return assignments;
+            .map(function (existingAssignments) {
+            for (var unassignedAssetId in newAssignments) {
+                var symbolAndTypeCode = unassignedAssetId.split(unassignedAssetIdSeparator);
+                var assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
+                existingAssignments[assetId] = newAssignments[unassignedAssetId];
+            }
+            return existingAssignments;
         })
             .flatMap(function (assignments) {
-            console.log("New assigments:", assignments);
             return saveAny(assignments, assignmentsPath);
         });
     }
@@ -411,7 +423,9 @@
                 describeArgument("targetId", targetId, function (arg) {
                     targetId = arg;
                 });
-                writeAssignment([symbolAndTypeCode, targetId])
+                var assignments = {};
+                assignments[symbolAndTypeCode] = targetId;
+                writeAssignments(assignments)
                     .subscribe(function (assignments) {
                     console.log(assignments);
                 }, function (e) {
@@ -452,9 +466,11 @@
                     .map(function (zip) {
                     return new Progress(zip[0], zip[1], zip[2]);
                 });
-                report.onErrorResumeNext(function (e) {
+                report
+                    .onErrorResumeNext(function (e) {
                     if (e instanceof UnassignedAssetError) {
-                        var assetId = e.assetId;
+                        var unassignedAssetIds = e.unassignedAssetIds;
+                        console.log("Unassigned assets: ", unassignedAssetIds);
                         return readTargets()
                             .map(function (targets) {
                             var targetIds = [];
@@ -464,10 +480,10 @@
                             return targetIds;
                         })
                             .flatMap(function (targetIds) {
-                            return human.askForAssignment(assetId, targetIds);
+                            return human.askForAssignments(unassignedAssetIds, targetIds);
                         })
-                            .flatMap(function (assignment) {
-                            return writeAssignment(assignment);
+                            .flatMap(function (assignments) {
+                            return writeAssignments(assignments);
                         })
                             .flatMap(function (assignments) {
                             return report;
@@ -476,10 +492,11 @@
                     return rxts_1.Observable.error(e);
                 })
                     .subscribe(function (result) {
-                    console.log(result);
+                    console.log(result.scores);
                 }, function (e) {
                     if (e instanceof UnassignedAssetError) {
-                        console.error("Unassigned asset " + e.assetId + ", call assignment");
+                        console.error("Unassigned assets " + e.unassignedAssetIds +
+                            ", call assignment");
                     }
                     else {
                         console.error(e);

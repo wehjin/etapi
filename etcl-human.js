@@ -17,9 +17,27 @@
     var rxts_1 = require("rxts");
     var open = require("open");
     var prompt = require("prompt");
-    function askForAssignment(assetId, targetIds) {
+    function askForAssignments(unassignedAssetIds, targetIds) {
+        var chain;
+        for (var i = 0; i < unassignedAssetIds.length; i++) {
+            if (!chain) {
+                chain = askForAssignment({}, unassignedAssetIds[0], targetIds);
+                continue;
+            }
+            function chainAsk(chainIndex) {
+                return function (newAssignments) {
+                    var unassignedAssetId = unassignedAssetIds[chainIndex];
+                    return askForAssignment(newAssignments, unassignedAssetId, targetIds);
+                };
+            }
+            chain = chain.flatMap(chainAsk(i));
+        }
+        return chain;
+    }
+    exports.askForAssignments = askForAssignments;
+    function askForAssignment(newAssignments, unassignedAssetId, targetIds) {
         return rxts_1.Observable.create(function (subscriber) {
-            var description = "Allocation for " + assetId + "\nChoices";
+            var description = "Allocation for " + unassignedAssetId + "\nChoices";
             for (var i = 0; i < targetIds.length; i++) {
                 description += "\n  " + (i + 1) + ". " + targetIds[i];
             }
@@ -30,7 +48,7 @@
                     selection: {
                         description: description,
                         type: 'number',
-                        default: 1,
+                        'default': 1,
                         required: true,
                         pattern: /^\d+$/,
                         message: 'Selection must be a number'
@@ -41,14 +59,19 @@
                     subscriber.onError(err);
                     return;
                 }
-                subscriber.onNext(targetIds[parseInt(result['selection']) - 1]);
+                var selection = (parseInt(result['selection']) - 1);
+                if (selection < 0 || selection >= targetIds.length) {
+                    subscriber.onError(new Error("Out of range selection: " + (selection + 1) + " of " +
+                        targetIds.length));
+                }
+                subscriber.onNext(targetIds[selection]);
                 subscriber.onCompleted();
             });
         }).map(function (targetId) {
-            return [assetId, targetId];
+            newAssignments[unassignedAssetId] = targetId;
+            return newAssignments;
         });
     }
-    exports.askForAssignment = askForAssignment;
     function askForVerifier(url) {
         return rxts_1.Observable.create(function (subscriber) {
             var subscription = new rxts_1.BooleanSubscription();

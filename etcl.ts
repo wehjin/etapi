@@ -23,7 +23,7 @@ var accessTokenPath = prefPath + "/accessToken.json";
 var accountListPath = prefPath + "/accountList.json";
 var targetsPath = prefPath + "/targets.json";
 var assignmentsPath = prefPath + "/assignments.json";
-var assetIdSeparator = ":";
+var unassignedAssetIdSeparator = ":";
 
 class NoEntryError implements Error {
     name : string = "NoEntryError";
@@ -300,11 +300,15 @@ class Assets {
 class UnassignedAssetError implements Error {
     name : string = "UnassignedAssetError";
     message : string;
-    assetId : string;
+    unassignedAssetIds : string[] = [];
 
-    constructor(private asset : Asset) {
-        this.assetId = asset.symbol + assetIdSeparator + asset.typeCode;
-        this.message = "No or invalid target for asset: " + this.assetId;
+    constructor(private assets : Asset[]) {
+        for (var i = 0; i < assets.length; i++) {
+            var asset = assets[i];
+            this.unassignedAssetIds.push(asset.symbol + unassignedAssetIdSeparator +
+                asset.typeCode);
+        }
+        this.message = "No or invalid target for assets: " + this.unassignedAssetIds;
     }
 }
 
@@ -331,18 +335,25 @@ class Progress {
         }
 
         var assetList = assets.getAssetList();
+        var unassignedAssetsList = [];
         for (var i = 0; i < assetList.length; i++) {
             var asset = assetList[i];
             var assetId = asset.assetId;
             var targetId = assignments[assetId];
             if (!targetId) {
-                throw new UnassignedAssetError(asset);
+                unassignedAssetsList.push(asset);
+                continue;
             }
             var score = this.scores[targetId];
             if (!score) {
-                throw new UnassignedAssetError(asset);
+                unassignedAssetsList.push(asset);
+                continue;
             }
             score.assets.push(asset);
+        }
+
+        if (unassignedAssetsList.length > 0) {
+            throw new UnassignedAssetError(unassignedAssetsList);
         }
     }
 }
@@ -428,16 +439,17 @@ function describeProgram(name : string, f : ()=>void) {
     }
 }
 
-function writeAssignment(assignment : [string,string]) : Observable<Object> {
+function writeAssignments(newAssignments : {[unassigendAssetId:string]:string}) : Observable<Object> {
     return readAssignments()
-        .map((assignments)=> {
-            var symbolAndTypeCode = assignment[0].split(assetIdSeparator);
-            var assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
-            assignments[assetId] = assignment[1];
-            return assignments;
+        .map((existingAssignments)=> {
+            for (var unassignedAssetId in newAssignments) {
+                var symbolAndTypeCode = unassignedAssetId.split(unassignedAssetIdSeparator);
+                var assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
+                existingAssignments[assetId] = newAssignments[unassignedAssetId];
+            }
+            return existingAssignments;
         })
         .flatMap((assignments) => {
-            console.log("New assigments:", assignments);
             return saveAny(assignments, assignmentsPath);
         });
 }
@@ -453,7 +465,9 @@ function main() {
             describeArgument("targetId", targetId, (arg)=> {
                 targetId = arg;
             });
-            writeAssignment([symbolAndTypeCode, targetId])
+            var assignments : {[unassigendAssetId:string]:string} = {};
+            assignments[symbolAndTypeCode] = targetId;
+            writeAssignments(assignments)
                 .subscribe((assignments)=> {
                     console.log(assignments);
                 }, (e)=> {
@@ -495,34 +509,37 @@ function main() {
                 .map((zip : [Target[],Object,Assets]) : Progress=> {
                     return new Progress(zip[0], zip[1], zip[2]);
                 });
-            report.onErrorResumeNext((e)=> {
-                if (e instanceof UnassignedAssetError) {
-                    var assetId : string = e.assetId;
-                    return readTargets()
-                        .map((targets : Target[])=> {
-                            var targetIds : string[] = [];
-                            for (var i = 0; i < targets.length; i++) {
-                                targetIds.push(targets[i].targetId);
-                            }
-                            return targetIds;
-                        })
-                        .flatMap((targetIds)=> {
-                            return human.askForAssignment(assetId, targetIds);
-                        })
-                        .flatMap((assignment : [string,string])=> {
-                            return writeAssignment(assignment);
-                        })
-                        .flatMap((assignments)=> {
-                            return report;
-                        });
-                }
-                return Observable.error(e);
+            report
+                .onErrorResumeNext((e)=> {
+                    if (e instanceof UnassignedAssetError) {
+                        var unassignedAssetIds : string[] = e.unassignedAssetIds;
+                        console.log("Unassigned assets: ", unassignedAssetIds);
+                        return readTargets()
+                            .map((targets : Target[])=> {
+                                var targetIds : string[] = [];
+                                for (var i = 0; i < targets.length; i++) {
+                                    targetIds.push(targets[i].targetId);
+                                }
+                                return targetIds;
+                            })
+                            .flatMap((targetIds)=> {
+                                return human.askForAssignments(unassignedAssetIds, targetIds);
+                            })
+                            .flatMap((assignments : {[unassigendAssetId:string]:string})=> {
+                                return writeAssignments(assignments);
+                            })
+                            .flatMap((assignments)=> {
+                                return report;
+                            });
+                    }
+                    return Observable.error(e);
                 })
                 .subscribe((result)=> {
-                    console.log(result);
+                    console.log(result.scores);
                 }, (e)=> {
                     if (e instanceof UnassignedAssetError) {
-                        console.error("Unassigned asset " + e.assetId + ", call assignment");
+                        console.error("Unassigned assets " + e.unassignedAssetIds +
+                            ", call assignment");
                     } else {
                         console.error(e);
                     }
