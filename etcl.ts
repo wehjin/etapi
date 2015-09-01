@@ -14,6 +14,7 @@ import {Service, OauthRequestToken, Credentials, AccessToken, TokenError, Accoun
 import fs = require("fs");
 import open = require("open");
 import prompt = require("prompt");
+import human = require("./etcl-human");
 
 var homePath = process.env['HOME'];
 var prefPath = homePath + '/.etcl';
@@ -22,7 +23,7 @@ var accessTokenPath = prefPath + "/accessToken.json";
 var accountListPath = prefPath + "/accountList.json";
 var targetsPath = prefPath + "/targets.json";
 var assignmentsPath = prefPath + "/assignments.json";
-var accountIdSeparator = ":";
+var assetIdSeparator = ":";
 
 class NoEntryError implements Error {
     name : string = "NoEntryError";
@@ -107,36 +108,13 @@ function deleteJson(path) {
     });
 }
 
-function askHumanForAccessCredentials(requestToken : OauthRequestToken) : Observable<Credentials> {
-
-    return Observable.create((subscriber : Subscriber<Credentials>)=> {
-        var subscription = new BooleanSubscription();
-        open(requestToken.getAuthenticationUrl());
-        prompt.start();
-        prompt.get(['verifier'], function (err, result) {
-            if (subscriber.isUnsubscribed()) {
-                return;
-            }
-            if (err) {
-                subscriber.onError(err);
-            } else {
-                var verifier = result['verifier'].trim();
-                if (verifier.length === 0) {
-                    subscriber.onError(new Error("no verifier"));
-                    return;
-                }
-                subscriber.onNext(new Credentials(verifier, requestToken));
-                subscriber.onCompleted();
-            }
-        });
-        return subscription;
-    });
-}
-
 function fetchAccessToken(service : Service) : Observable<AccessToken> {
     return service.fetchRequestToken()
         .flatMap((requestToken : OauthRequestToken)=> {
-            return askHumanForAccessCredentials(requestToken);
+            return human.askForVerifier(requestToken.getAuthenticationUrl())
+                .map((verifier : string)=> {
+                    return new Credentials(verifier, requestToken);
+                });
         })
         .flatMap((credentials : Credentials)=> {
             return credentials.getAccessToken();
@@ -325,7 +303,7 @@ class UnassignedAssetError implements Error {
     assetId : string;
 
     constructor(private asset : Asset) {
-        this.assetId = asset.symbol + accountIdSeparator + asset.typeCode;
+        this.assetId = asset.symbol + assetIdSeparator + asset.typeCode;
         this.message = "No or invalid target for asset: " + this.assetId;
     }
 }
@@ -450,26 +428,32 @@ function describeProgram(name : string, f : ()=>void) {
     }
 }
 
+function writeAssignment(assignment : [string,string]) : Observable<Object> {
+    return readAssignments()
+        .map((assignments)=> {
+            var symbolAndTypeCode = assignment[0].split(assetIdSeparator);
+            var assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
+            assignments[assetId] = assignment[1];
+            return assignments;
+        })
+        .flatMap((assignments) => {
+            console.log("New assigments:", assignments);
+            return saveAny(assignments, assignmentsPath);
+        });
+}
+
 function main() {
     describeProgram("etcl", ()=> {
         describeCommand("assignment", ()=> {
-            var assetId;
-            var targetId;
-            describeArgument("assetId", "GOOG|EQ", (arg)=> {
-                var symbolAndTypeCode = arg.split(accountIdSeparator);
-                assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
+            var symbolAndTypeCode = "GOOG:EQ";
+            var targetId = "stocks";
+            describeArgument("assetId", symbolAndTypeCode, (arg)=> {
+                symbolAndTypeCode = arg;
             });
-            describeArgument("targetId", "stocks", (arg)=> {
+            describeArgument("targetId", targetId, (arg)=> {
                 targetId = arg;
             });
-            readAssignments()
-                .map((assignments)=> {
-                    assignments[assetId] = targetId;
-                    return assignments;
-                })
-                .flatMap((assignments) => {
-                    return saveAny(assignments, assignmentsPath);
-                })
+            writeAssignment([symbolAndTypeCode, targetId])
                 .subscribe((assignments)=> {
                     console.log(assignments);
                 }, (e)=> {
@@ -507,12 +491,32 @@ function main() {
                 });
         });
         describeCommand("report", ()=> {
-            var assets = getAssets();
-            var targets = readTargets();
-            var assignments = readAssignments();
-            Observable.zip3(targets, assignments, assets)
+            var report = Observable.zip3(readTargets(), readAssignments(), getAssets())
                 .map((zip : [Target[],Object,Assets]) : Progress=> {
                     return new Progress(zip[0], zip[1], zip[2]);
+                });
+            report.onErrorResumeNext((e)=> {
+                if (e instanceof UnassignedAssetError) {
+                    var assetId : string = e.assetId;
+                    return readTargets()
+                        .map((targets : Target[])=> {
+                            var targetIds : string[] = [];
+                            for (var i = 0; i < targets.length; i++) {
+                                targetIds.push(targets[i].targetId);
+                            }
+                            return targetIds;
+                        })
+                        .flatMap((targetIds)=> {
+                            return human.askForAssignment(assetId, targetIds);
+                        })
+                        .flatMap((assignment : [string,string])=> {
+                            return writeAssignment(assignment);
+                        })
+                        .flatMap((assignments)=> {
+                            return report;
+                        });
+                }
+                return Observable.error(e);
                 })
                 .subscribe((result)=> {
                     console.log(result);

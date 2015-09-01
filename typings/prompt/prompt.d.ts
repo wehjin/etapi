@@ -6,5 +6,5 @@
 declare module "prompt" {
     export function start();
 
-    export function get(setup : string[], handler : (err : any, result : Object)=>void);
+    export function get(setup : string[]|Object, handler : (err : any, result : Object)=>void);
 }

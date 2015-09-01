@@ -9,7 +9,7 @@
     else if (typeof define === 'function' && define.amd) {
         define(deps, factory);
     }
-})(["require", "exports", "rxts", "et", "fs", "open", "prompt"], function (require, exports) {
+})(["require", "exports", "rxts", "et", "fs", "./etcl-human"], function (require, exports) {
     ///<reference path="node_modules/rxts/rxts.d.ts"/>
     ///<reference path="./typings/node/node.d.ts" />
     ///<reference path="./typings/open/open.d.ts" />
@@ -17,8 +17,7 @@
     var rxts_1 = require("rxts");
     var et_1 = require("et");
     var fs = require("fs");
-    var open = require("open");
-    var prompt = require("prompt");
+    var human = require("./etcl-human");
     var homePath = process.env['HOME'];
     var prefPath = homePath + '/.etcl';
     var setupPath = prefPath + '/setup.json';
@@ -26,7 +25,7 @@
     var accountListPath = prefPath + "/accountList.json";
     var targetsPath = prefPath + "/targets.json";
     var assignmentsPath = prefPath + "/assignments.json";
-    var accountIdSeparator = ":";
+    var assetIdSeparator = ":";
     var NoEntryError = (function () {
         function NoEntryError(message) {
             this.name = "NoEntryError";
@@ -105,35 +104,13 @@
             });
         });
     }
-    function askHumanForAccessCredentials(requestToken) {
-        return rxts_1.Observable.create(function (subscriber) {
-            var subscription = new rxts_1.BooleanSubscription();
-            open(requestToken.getAuthenticationUrl());
-            prompt.start();
-            prompt.get(['verifier'], function (err, result) {
-                if (subscriber.isUnsubscribed()) {
-                    return;
-                }
-                if (err) {
-                    subscriber.onError(err);
-                }
-                else {
-                    var verifier = result['verifier'].trim();
-                    if (verifier.length === 0) {
-                        subscriber.onError(new Error("no verifier"));
-                        return;
-                    }
-                    subscriber.onNext(new et_1.Credentials(verifier, requestToken));
-                    subscriber.onCompleted();
-                }
-            });
-            return subscription;
-        });
-    }
     function fetchAccessToken(service) {
         return service.fetchRequestToken()
             .flatMap(function (requestToken) {
-            return askHumanForAccessCredentials(requestToken);
+            return human.askForVerifier(requestToken.getAuthenticationUrl())
+                .map(function (verifier) {
+                return new et_1.Credentials(verifier, requestToken);
+            });
         })
             .flatMap(function (credentials) {
             return credentials.getAccessToken();
@@ -302,7 +279,7 @@
         function UnassignedAssetError(asset) {
             this.asset = asset;
             this.name = "UnassignedAssetError";
-            this.assetId = asset.symbol + accountIdSeparator + asset.typeCode;
+            this.assetId = asset.symbol + assetIdSeparator + asset.typeCode;
             this.message = "No or invalid target for asset: " + this.assetId;
         }
         return UnassignedAssetError;
@@ -410,26 +387,31 @@
             }
         }
     }
+    function writeAssignment(assignment) {
+        return readAssignments()
+            .map(function (assignments) {
+            var symbolAndTypeCode = assignment[0].split(assetIdSeparator);
+            var assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
+            assignments[assetId] = assignment[1];
+            return assignments;
+        })
+            .flatMap(function (assignments) {
+            console.log("New assigments:", assignments);
+            return saveAny(assignments, assignmentsPath);
+        });
+    }
     function main() {
         describeProgram("etcl", function () {
             describeCommand("assignment", function () {
-                var assetId;
-                var targetId;
-                describeArgument("assetId", "GOOG|EQ", function (arg) {
-                    var symbolAndTypeCode = arg.split(accountIdSeparator);
-                    assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
+                var symbolAndTypeCode = "GOOG:EQ";
+                var targetId = "stocks";
+                describeArgument("assetId", symbolAndTypeCode, function (arg) {
+                    symbolAndTypeCode = arg;
                 });
-                describeArgument("targetId", "stocks", function (arg) {
+                describeArgument("targetId", targetId, function (arg) {
                     targetId = arg;
                 });
-                readAssignments()
-                    .map(function (assignments) {
-                    assignments[assetId] = targetId;
-                    return assignments;
-                })
-                    .flatMap(function (assignments) {
-                    return saveAny(assignments, assignmentsPath);
-                })
+                writeAssignment([symbolAndTypeCode, targetId])
                     .subscribe(function (assignments) {
                     console.log(assignments);
                 }, function (e) {
@@ -466,12 +448,32 @@
                 });
             });
             describeCommand("report", function () {
-                var assets = getAssets();
-                var targets = readTargets();
-                var assignments = readAssignments();
-                rxts_1.Observable.zip3(targets, assignments, assets)
+                var report = rxts_1.Observable.zip3(readTargets(), readAssignments(), getAssets())
                     .map(function (zip) {
                     return new Progress(zip[0], zip[1], zip[2]);
+                });
+                report.onErrorResumeNext(function (e) {
+                    if (e instanceof UnassignedAssetError) {
+                        var assetId = e.assetId;
+                        return readTargets()
+                            .map(function (targets) {
+                            var targetIds = [];
+                            for (var i = 0; i < targets.length; i++) {
+                                targetIds.push(targets[i].targetId);
+                            }
+                            return targetIds;
+                        })
+                            .flatMap(function (targetIds) {
+                            return human.askForAssignment(assetId, targetIds);
+                        })
+                            .flatMap(function (assignment) {
+                            return writeAssignment(assignment);
+                        })
+                            .flatMap(function (assignments) {
+                            return report;
+                        });
+                    }
+                    return rxts_1.Observable.error(e);
                 })
                     .subscribe(function (result) {
                     console.log(result);
