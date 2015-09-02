@@ -17,6 +17,34 @@
     var rxts_1 = require("rxts");
     var open = require("open");
     var prompt = require("prompt");
+    function askForTargetOperation(formattedTargets) {
+        return formattedTargets
+            .flatMap(function (formatted) {
+            console.log(formatted);
+            return rxts_1.Observable.create(function (subscriber) {
+                prompt.start();
+                prompt.get({
+                    properties: {
+                        command: {
+                            pattern: /^[+\-=]$/,
+                            message: 'Command must be +, - or =',
+                            required: true,
+                            description: "+, -, =",
+                            'default': "="
+                        }
+                    }
+                }, function (err, result) {
+                    if (err) {
+                        subscriber.onError(err);
+                        return;
+                    }
+                    subscriber.onNext(result['command']);
+                    subscriber.onCompleted();
+                });
+            });
+        });
+    }
+    exports.askForTargetOperation = askForTargetOperation;
     function askForAssignments(unassignedAssetIds, targetIds) {
         var chain;
         for (var i = 0; i < unassignedAssetIds.length; i++) {

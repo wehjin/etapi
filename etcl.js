@@ -378,9 +378,6 @@
         return readJson(targetsPath)
             .map(function (json) {
             return json;
-        })
-            .onErrorResumeNext(function (e) {
-            return rxts_1.Observable.error(new Error("No targets - call setTarget"));
         });
     }
     function readTargetIds() {
@@ -412,6 +409,16 @@
             .flatMap(function (assignments) {
             return saveAny(assignments, assignmentsPath);
         });
+    }
+    function formatTarget(target) {
+        return target.targetId + ": " + target.fraction.toFixed(3);
+    }
+    function formatTargets(targets) {
+        var fullFormat = "";
+        for (var i = 0; i < targets.length; i++) {
+            fullFormat += (i + 1).toString() + ". " + formatTarget(targets[i]) + "\n";
+        }
+        return fullFormat;
     }
     var argIndex = 2;
     var commands = [];
@@ -461,6 +468,12 @@
             }
         }
     }
+    function getFormattedTargets() {
+        return readTargets()
+            .map(function (targets) {
+            return formatTargets(targets);
+        });
+    }
     function main() {
         describeProgram("etcl", function () {
             describeCommand("assignment", function () {
@@ -481,6 +494,18 @@
                     console.error(e);
                 });
             });
+            describeCommand("segments", function () {
+                var getSegmentCommand = human.askForTargetOperation(getFormattedTargets());
+                var getSegmentCommandsUntilDone = getSegmentCommand.flatMap(function (command) {
+                    if (command === "=") {
+                        return rxts_1.Observable.from(["done"]);
+                    }
+                    else {
+                        return getSegmentCommandsUntilDone;
+                    }
+                });
+                getSegmentCommandsUntilDone.subscribe(console.log, console.error);
+            });
             describeCommand("setTarget", function () {
                 var targetName;
                 var targetFraction;
@@ -488,7 +513,7 @@
                     targetName = arg;
                 });
                 describeArgument("fraction", ".7", function (arg) {
-                    targetFraction = arg;
+                    targetFraction = parseFloat(arg);
                 });
                 readTargets()
                     .onErrorResumeNext(function (e) {

@@ -18,6 +18,34 @@ export interface UnassignedAssetsMap {
     [unassigendAssetId:string]:string
 }
 
+export function askForTargetOperation(formattedTargets : Observable<string>) : Observable<string> {
+    return formattedTargets
+        .flatMap((formatted : string)=> {
+            console.log(formatted);
+            return Observable.create((subscriber : Subscriber<string>)=> {
+                prompt.start();
+                prompt.get({
+                    properties: {
+                        command: {
+                            pattern: /^[+\-=]$/,
+                            message: 'Command must be +, - or =',
+                            required: true,
+                            description: "+, -, =",
+                            'default': "=",
+                        }
+                    }
+                }, (err, result)=> {
+                    if (err) {
+                        subscriber.onError(err);
+                        return;
+                    }
+                    subscriber.onNext(result['command']);
+                    subscriber.onCompleted();
+                });
+            });
+        });
+}
+
 export function askForAssignments(unassignedAssetIds : string[],
                                   targetIds : string[]) : Observable<UnassignedAssetsMap> {
     var chain : Observable<UnassignedAssetsMap>;

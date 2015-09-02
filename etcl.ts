@@ -419,10 +419,7 @@ function readTargets() : Observable<Target[]> {
     return readJson(targetsPath)
         .map((json) : Target[]=> {
             return json;
-        })
-        .onErrorResumeNext((e)=> {
-            return Observable.error(new Error("No targets - call setTarget"));
-        })
+        });
 }
 
 function readTargetIds() : Observable<string[]> {
@@ -456,6 +453,18 @@ function writeAssignments(newAssignments : {[unassigendAssetId:string]:string}) 
         .flatMap((assignments) => {
             return saveAny(assignments, assignmentsPath);
         });
+}
+
+function formatTarget(target : Target) : string {
+    return target.targetId + ": " + target.fraction.toFixed(3);
+}
+
+function formatTargets(targets : Target[]) : string {
+    var fullFormat = "";
+    for (var i = 0; i < targets.length; i++) {
+        fullFormat += (i + 1).toString() + ". " + formatTarget(targets[i]) + "\n";
+    }
+    return fullFormat;
 }
 
 var argIndex = 2;
@@ -508,6 +517,13 @@ function describeProgram(name : string, f : ()=>void) {
     }
 }
 
+function getFormattedTargets() : Observable<string> {
+    return readTargets()
+        .map((targets : Target[]) : string=> {
+            return formatTargets(targets);
+        });
+}
+
 function main() {
     describeProgram("etcl", ()=> {
         describeCommand("assignment", ()=> {
@@ -529,6 +545,18 @@ function main() {
                 });
         });
 
+        describeCommand("segments", ()=> {
+            var getSegmentCommand = human.askForTargetOperation(getFormattedTargets());
+            var getSegmentCommandsUntilDone = getSegmentCommand.flatMap((command : string)=> {
+                if (command === "=") {
+                    return Observable.from(["done"]);
+                } else {
+                    return getSegmentCommandsUntilDone;
+                }
+            });
+            getSegmentCommandsUntilDone.subscribe(console.log, console.error);
+        });
+
         describeCommand("setTarget", ()=> {
             var targetName;
             var targetFraction;
@@ -536,7 +564,7 @@ function main() {
                 targetName = arg;
             });
             describeArgument("fraction", ".7", (arg)=> {
-                targetFraction = arg;
+                targetFraction = parseFloat(arg);
             });
             readTargets()
                 .onErrorResumeNext((e)=> {
