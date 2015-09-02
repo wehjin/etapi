@@ -17,6 +17,52 @@
     var rxts_1 = require("rxts");
     var open = require("open");
     var prompt = require("prompt");
+    function askForNewTarget(existingNames) {
+        return rxts_1.Observable.create(function (subscriber) {
+            var count = existingNames.length;
+            prompt.start();
+            prompt.get({
+                properties: {
+                    position: {
+                        type: 'number',
+                        pattern: /^\d+$/,
+                        message: 'Position be between 1 and ' + (count + 1),
+                        required: true,
+                        'default': count + 1
+                    },
+                    name: {
+                        required: true
+                    },
+                    proportion: {
+                        type: 'number',
+                        pattern: /^(0|1)([.]\d+)?$/,
+                        message: 'Proportion must be between 0 and 1',
+                        required: true,
+                        'default': 0
+                    }
+                }
+            }, function (err, result) {
+                if (err) {
+                    subscriber.onError(err);
+                    return;
+                }
+                var segmentName = result['name'];
+                for (var i = 0; i < existingNames.length; i++) {
+                    if (existingNames[i] === segmentName) {
+                        throw new Error("Duplicate segment name: " + segmentName);
+                    }
+                }
+                var index = (parseInt(result['position']) - 1);
+                if (index < 0 || index > existingNames.length) {
+                    throw new RangeError(index.toString() + " not in 1.." + (count + 1));
+                }
+                subscriber.onNext([index, segmentName,
+                    parseFloat(result['proportion'])]);
+                subscriber.onCompleted();
+            });
+        });
+    }
+    exports.askForNewTarget = askForNewTarget;
     function askForTargetOperation(formattedTargets) {
         return formattedTargets
             .flatMap(function (formatted) {

@@ -500,6 +500,28 @@
                     if (command === "=") {
                         return rxts_1.Observable.from(["done"]);
                     }
+                    else if (command === "+") {
+                        return readTargetIds()
+                            .flatMap(function (targetIds) {
+                            return human.askForNewTarget(targetIds);
+                        })
+                            .flatMap(function (newTarget) {
+                            return readTargets()
+                                .map(function (targets) {
+                                targets.splice(newTarget[0], 0, {
+                                    targetId: newTarget[1],
+                                    fraction: newTarget[2]
+                                });
+                                return targets;
+                            });
+                        })
+                            .flatMap(function (targets) {
+                            return saveAny(targets, targetsPath);
+                        })
+                            .flatMap(function (targets) {
+                            return getSegmentCommandsUntilDone;
+                        });
+                    }
                     else {
                         return getSegmentCommandsUntilDone;
                     }
