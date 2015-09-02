@@ -317,21 +317,38 @@ interface Target {
     fraction : number;
 }
 
-interface Score {
+interface Segment {
     target : Target;
     assets : Asset[];
 }
 
+function scoreMarketValue(score : Segment) {
+    var marketValue = 0.0;
+    var assets = score.assets;
+    for (var j = 0; j < assets.length; j++) {
+        var asset = assets[j];
+        marketValue += asset.marketValue;
+    }
+    return marketValue;
+}
+
+function scoreProportionOfPortfolio(score : Segment, portfolioMarketValue : number) : number {
+    return scoreMarketValue(score) / portfolioMarketValue;
+}
+
 class Progress {
-    scores : { [targetId:string]:Score } = {};
+    scoresByTargetId : { [targetId:string]:Segment } = {};
+    scores : Segment[] = [];
 
     constructor(targets : Target[], assignments : Object, assets : Assets) {
         for (var i = 0; i < targets.length; i++) {
             var target = targets[i];
-            this.scores[target.targetId] = {
+            var score : Segment = {
                 target: target,
                 assets: []
             };
+            this.scoresByTargetId[target.targetId] = score;
+            this.scores.push(score);
         }
 
         var assetList = assets.getAssetList();
@@ -344,7 +361,7 @@ class Progress {
                 unassignedAssetsList.push(asset);
                 continue;
             }
-            var score = this.scores[targetId];
+            var score = this.scoresByTargetId[targetId];
             if (!score) {
                 unassignedAssetsList.push(asset);
                 continue;
@@ -355,6 +372,32 @@ class Progress {
         if (unassignedAssetsList.length > 0) {
             throw new UnassignedAssetError(unassignedAssetsList);
         }
+    }
+
+    portfolioMarketValue() : number {
+        var marketValue = 0.0;
+        for (var i = 0; i < this.scores.length; i++) {
+            var score = this.scores[i];
+            marketValue += scoreMarketValue(score);
+        }
+        return marketValue;
+    }
+
+    report() : string {
+        var fullReport = "";
+        var portfolioMarketValue = this.portfolioMarketValue();
+        for (var i = 0; i < this.scores.length; i++) {
+            var score = this.scores[i];
+            var scoreProportion = scoreProportionOfPortfolio(score, portfolioMarketValue);
+            var targetProportion = score.target.fraction;
+            var error = scoreProportion - targetProportion;
+            var errorRatio = error / targetProportion;
+            var scoreReport = score.target.targetId + " : " +
+                ((errorRatio >= 0) ? "overweight " : "underweight ") +
+                (errorRatio * 100).toFixed(2) + "%\n";
+            fullReport += scoreReport;
+        }
+        return fullReport;
     }
 }
 
@@ -516,32 +559,30 @@ function main() {
                 });
         });
         describeCommand("report", ()=> {
-            var report = Observable.zip3(readTargets(), readAssignments(), getAssets())
+            var progress = Observable.zip3(readTargets(), readAssignments(), getAssets())
                 .map((zip : [Target[],Object,Assets]) : Progress=> {
                     return new Progress(zip[0], zip[1], zip[2]);
                 });
-            report
-                .onErrorResumeNext((e)=> {
-                    if (e instanceof UnassignedAssetError) {
-                        var unassignedAssetIds : string[] = e.unassignedAssetIds;
-                        console.log("Unassigned assets: ", unassignedAssetIds);
-                        return readTargetIds()
-                            .flatMap((targetIds)=> {
-                                return human.askForAssignments(unassignedAssetIds, targetIds);
-                            })
-                            .flatMap((assignments : {[unassigendAssetId:string]:string})=> {
-                                return writeAssignments(assignments);
-                            })
-                            .flatMap((assignments)=> {
-                                return report;
-                            });
-                    } else {
-                        return Observable.error(e);
-                    }
-                })
-                .subscribe((result)=> {
-                    console.log(result.scores);
-                }, console.error);
+            progress.onErrorResumeNext((e)=> {
+                if (e instanceof UnassignedAssetError) {
+                    var unassignedAssetIds : string[] = e.unassignedAssetIds;
+                    console.log("Unassigned assets: ", unassignedAssetIds);
+                    return readTargetIds()
+                        .flatMap((targetIds)=> {
+                            return human.askForAssignments(unassignedAssetIds, targetIds);
+                        })
+                        .flatMap((assignments : {[unassigendAssetId:string]:string})=> {
+                            return writeAssignments(assignments);
+                        })
+                        .flatMap((assignments)=> {
+                            return progress;
+                        });
+                } else {
+                    return Observable.error(e);
+                }
+            }).subscribe((result)=> {
+                console.log(result.report());
+            }, console.error);
         });
     });
 }

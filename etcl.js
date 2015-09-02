@@ -289,15 +289,30 @@
         }
         return UnassignedAssetError;
     })();
+    function scoreMarketValue(score) {
+        var marketValue = 0.0;
+        var assets = score.assets;
+        for (var j = 0; j < assets.length; j++) {
+            var asset = assets[j];
+            marketValue += asset.marketValue;
+        }
+        return marketValue;
+    }
+    function scoreProportionOfPortfolio(score, portfolioMarketValue) {
+        return scoreMarketValue(score) / portfolioMarketValue;
+    }
     var Progress = (function () {
         function Progress(targets, assignments, assets) {
-            this.scores = {};
+            this.scoresByTargetId = {};
+            this.scores = [];
             for (var i = 0; i < targets.length; i++) {
                 var target = targets[i];
-                this.scores[target.targetId] = {
+                var score = {
                     target: target,
                     assets: []
                 };
+                this.scoresByTargetId[target.targetId] = score;
+                this.scores.push(score);
             }
             var assetList = assets.getAssetList();
             var unassignedAssetsList = [];
@@ -309,7 +324,7 @@
                     unassignedAssetsList.push(asset);
                     continue;
                 }
-                var score = this.scores[targetId];
+                var score = this.scoresByTargetId[targetId];
                 if (!score) {
                     unassignedAssetsList.push(asset);
                     continue;
@@ -320,6 +335,30 @@
                 throw new UnassignedAssetError(unassignedAssetsList);
             }
         }
+        Progress.prototype.portfolioMarketValue = function () {
+            var marketValue = 0.0;
+            for (var i = 0; i < this.scores.length; i++) {
+                var score = this.scores[i];
+                marketValue += scoreMarketValue(score);
+            }
+            return marketValue;
+        };
+        Progress.prototype.report = function () {
+            var fullReport = "";
+            var portfolioMarketValue = this.portfolioMarketValue();
+            for (var i = 0; i < this.scores.length; i++) {
+                var score = this.scores[i];
+                var scoreProportion = scoreProportionOfPortfolio(score, portfolioMarketValue);
+                var targetProportion = score.target.fraction;
+                var error = scoreProportion - targetProportion;
+                var errorRatio = error / targetProportion;
+                var scoreReport = score.target.targetId + " : " +
+                    ((errorRatio >= 0) ? "overweight " : "underweight ") +
+                    (errorRatio * 100).toFixed(2) + "%\n";
+                fullReport += scoreReport;
+            }
+            return fullReport;
+        };
         return Progress;
     })();
     function getAssets() {
@@ -472,12 +511,11 @@
                 });
             });
             describeCommand("report", function () {
-                var report = rxts_1.Observable.zip3(readTargets(), readAssignments(), getAssets())
+                var progress = rxts_1.Observable.zip3(readTargets(), readAssignments(), getAssets())
                     .map(function (zip) {
                     return new Progress(zip[0], zip[1], zip[2]);
                 });
-                report
-                    .onErrorResumeNext(function (e) {
+                progress.onErrorResumeNext(function (e) {
                     if (e instanceof UnassignedAssetError) {
                         var unassignedAssetIds = e.unassignedAssetIds;
                         console.log("Unassigned assets: ", unassignedAssetIds);
@@ -489,15 +527,14 @@
                             return writeAssignments(assignments);
                         })
                             .flatMap(function (assignments) {
-                            return report;
+                            return progress;
                         });
                     }
                     else {
                         return rxts_1.Observable.error(e);
                     }
-                })
-                    .subscribe(function (result) {
-                    console.log(result.scores);
+                }).subscribe(function (result) {
+                    console.log(result.report());
                 }, console.error);
             });
         });
