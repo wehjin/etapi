@@ -606,35 +606,6 @@ function main() {
             getSegmentCommandsUntilDone.subscribe(console.log, console.error);
         });
 
-        describeCommand("setTarget", ()=> {
-            var targetName;
-            var targetFraction;
-            describeArgument("targetId", "stocks", (arg)=> {
-                targetName = arg;
-            });
-            describeArgument("fraction", ".7", (arg)=> {
-                targetFraction = parseFloat(arg);
-            });
-            readTargets()
-                .onErrorResumeNext((e)=> {
-                    return Observable.from([[]]);
-                })
-                .map((targets : Target[])=> {
-                    targets.push({
-                        targetId: targetName,
-                        fraction: targetFraction,
-                    });
-                    return targets;
-                })
-                .flatMap((targets : Target[])=> {
-                    return saveAny(targets, targetsPath);
-                })
-                .subscribe((targets)=> {
-                    console.log(targets);
-                }, (e)=> {
-                    console.error(e);
-                });
-        });
         describeCommand("report", ()=> {
             var progress = Observable.zip3(readTargets(), readAssignments(), getAssets())
                 .map((zip : [Target[],Object,Assets]) : Progress=> {

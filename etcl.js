@@ -555,35 +555,6 @@
                 });
                 getSegmentCommandsUntilDone.subscribe(console.log, console.error);
             });
-            describeCommand("setTarget", function () {
-                var targetName;
-                var targetFraction;
-                describeArgument("targetId", "stocks", function (arg) {
-                    targetName = arg;
-                });
-                describeArgument("fraction", ".7", function (arg) {
-                    targetFraction = parseFloat(arg);
-                });
-                readTargets()
-                    .onErrorResumeNext(function (e) {
-                    return rxts_1.Observable.from([[]]);
-                })
-                    .map(function (targets) {
-                    targets.push({
-                        targetId: targetName,
-                        fraction: targetFraction
-                    });
-                    return targets;
-                })
-                    .flatMap(function (targets) {
-                    return saveAny(targets, targetsPath);
-                })
-                    .subscribe(function (targets) {
-                    console.log(targets);
-                }, function (e) {
-                    console.error(e);
-                });
-            });
             describeCommand("report", function () {
                 var progress = rxts_1.Observable.zip3(readTargets(), readAssignments(), getAssets())
                     .map(function (zip) {
