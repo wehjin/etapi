@@ -524,6 +524,26 @@ function getFormattedTargets() : Observable<string> {
         });
 }
 
+function addNewTarget() : Observable<Target[]> {
+    return readTargetIds()
+        .flatMap((targetIds : string[])=> {
+            return human.askForNewTarget(targetIds);
+        })
+        .flatMap((newTarget : [number,string,number])=> {
+            return readTargets()
+                .map((targets : Target[])=> {
+                    targets.splice(newTarget[0], 0, {
+                        targetId: newTarget[1],
+                        fraction: newTarget[2]
+                    });
+                    return targets;
+                });
+        })
+        .flatMap((targets : Target[])=> {
+            return saveAny(targets, targetsPath);
+        });
+}
+
 function main() {
     describeProgram("etcl", ()=> {
         describeCommand("assignment", ()=> {
@@ -551,23 +571,7 @@ function main() {
                 if (command === "=") {
                     return Observable.from(["done"]);
                 } else if (command === "+") {
-                    return readTargetIds()
-                        .flatMap((targetIds : string[])=> {
-                            return human.askForNewTarget(targetIds);
-                        })
-                        .flatMap((newTarget : [number,string,number])=> {
-                            return readTargets()
-                                .map((targets : Target[])=> {
-                                    targets.splice(newTarget[0], 0, {
-                                        targetId: newTarget[1],
-                                        fraction: newTarget[2]
-                                    });
-                                    return targets;
-                                });
-                        })
-                        .flatMap((targets : Target[])=> {
-                            return saveAny(targets, targetsPath);
-                        })
+                    return addNewTarget()
                         .flatMap((targets : Target[])=> {
                             return getSegmentCommandsUntilDone;
                         });

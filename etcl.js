@@ -474,6 +474,25 @@
             return formatTargets(targets);
         });
     }
+    function addNewTarget() {
+        return readTargetIds()
+            .flatMap(function (targetIds) {
+            return human.askForNewTarget(targetIds);
+        })
+            .flatMap(function (newTarget) {
+            return readTargets()
+                .map(function (targets) {
+                targets.splice(newTarget[0], 0, {
+                    targetId: newTarget[1],
+                    fraction: newTarget[2]
+                });
+                return targets;
+            });
+        })
+            .flatMap(function (targets) {
+            return saveAny(targets, targetsPath);
+        });
+    }
     function main() {
         describeProgram("etcl", function () {
             describeCommand("assignment", function () {
@@ -501,23 +520,7 @@
                         return rxts_1.Observable.from(["done"]);
                     }
                     else if (command === "+") {
-                        return readTargetIds()
-                            .flatMap(function (targetIds) {
-                            return human.askForNewTarget(targetIds);
-                        })
-                            .flatMap(function (newTarget) {
-                            return readTargets()
-                                .map(function (targets) {
-                                targets.splice(newTarget[0], 0, {
-                                    targetId: newTarget[1],
-                                    fraction: newTarget[2]
-                                });
-                                return targets;
-                            });
-                        })
-                            .flatMap(function (targets) {
-                            return saveAny(targets, targetsPath);
-                        })
+                        return addNewTarget()
                             .flatMap(function (targets) {
                             return getSegmentCommandsUntilDone;
                         });

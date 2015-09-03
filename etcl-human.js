@@ -26,16 +26,26 @@
                     position: {
                         type: 'number',
                         pattern: /^\d+$/,
-                        message: 'Position be between 1 and ' + (count + 1),
+                        message: 'Enter a position between 1 and ' + (count + 1),
+                        minimum: 1,
+                        maximum: (count + 1),
+                        divisibleBy: 1,
                         required: true,
-                        'default': count + 1
+                        "default": count + 1
                     },
                     name: {
-                        required: true
+                        type: 'string',
+                        allowEmpty: false,
+                        required: true,
+                        conform: function (v) {
+                            return v.trim().length > 0;
+                        }
                     },
                     proportion: {
                         type: 'number',
                         pattern: /^(0|1)([.]\d+)?$/,
+                        minimum: 0,
+                        maximum: 1,
                         message: 'Proportion must be between 0 and 1',
                         required: true,
                         'default': 0
@@ -72,8 +82,7 @@
                 prompt.get({
                     properties: {
                         command: {
-                            pattern: /^[+\-=]$/,
-                            message: 'Command must be +, - or =',
+                            enum: ['+', '-', '='],
                             required: true,
                             description: "+, -, =",
                             'default': "="
