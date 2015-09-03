@@ -17,6 +17,34 @@
     var rxts_1 = require("rxts");
     var open = require("open");
     var prompt = require("prompt");
+    function askForOldTarget(existingNames) {
+        return rxts_1.Observable.create(function (subscriber) {
+            var count = existingNames.length;
+            prompt.start();
+            prompt.get({
+                properties: {
+                    position: {
+                        type: 'number',
+                        pattern: /^\d+$/,
+                        message: 'Enter a position between 1 and ' + count,
+                        minimum: 1,
+                        maximum: count,
+                        divisibleBy: 1,
+                        required: true,
+                        "default": count
+                    }
+                }
+            }, function (err, result) {
+                if (err) {
+                    subscriber.onError(err);
+                    return;
+                }
+                subscriber.onNext(parseInt(result['position']) - 1);
+                subscriber.onCompleted();
+            });
+        });
+    }
+    exports.askForOldTarget = askForOldTarget;
     function askForNewTarget(existingNames) {
         return rxts_1.Observable.create(function (subscriber) {
             var count = existingNames.length;

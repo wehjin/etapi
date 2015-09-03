@@ -18,6 +18,34 @@ export interface UnassignedAssetsMap {
     [unassigendAssetId:string]:string
 }
 
+export function askForOldTarget(existingNames : string[]) : Observable<number> {
+    return Observable.create((subscriber : Subscriber<number>)=> {
+        var count = existingNames.length;
+        prompt.start();
+        prompt.get({
+            properties: {
+                position: {
+                    type: 'number',
+                    pattern: /^\d+$/,
+                    message: 'Enter a position between 1 and ' + count,
+                    minimum: 1,
+                    maximum: count,
+                    divisibleBy: 1,
+                    required: true,
+                    "default": count
+                },
+            }
+        }, (err, result)=> {
+            if (err) {
+                subscriber.onError(err);
+                return;
+            }
+            subscriber.onNext(parseInt(result['position']) - 1);
+            subscriber.onCompleted();
+        });
+    });
+}
+
 export function askForNewTarget(existingNames : string[]) : Observable<[number,string,number]> {
     return Observable.create((subscriber : Subscriber<[number, string, number]>)=> {
         var count = existingNames.length;

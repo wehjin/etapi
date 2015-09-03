@@ -474,6 +474,24 @@
             return formatTargets(targets);
         });
     }
+    function deleteOldTarget() {
+        return readTargetIds()
+            .flatMap(function (targetIds) {
+            return human.askForOldTarget(targetIds);
+        })
+            .flatMap(function (oldTarget) {
+            return readTargets()
+                .map(function (targets) {
+                if (targets.length > 0) {
+                    targets.splice(oldTarget, 1);
+                }
+                return targets;
+            });
+        })
+            .flatMap(function (targets) {
+            return saveAny(targets, targetsPath);
+        });
+    }
     function addNewTarget() {
         return readTargetIds()
             .flatMap(function (targetIds) {
@@ -521,7 +539,13 @@
                     }
                     else if (command === "+") {
                         return addNewTarget()
-                            .flatMap(function (targets) {
+                            .flatMap(function () {
+                            return getSegmentCommandsUntilDone;
+                        });
+                    }
+                    else if (command === "-") {
+                        return deleteOldTarget()
+                            .flatMap(function () {
                             return getSegmentCommandsUntilDone;
                         });
                     }

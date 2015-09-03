@@ -524,6 +524,25 @@ function getFormattedTargets() : Observable<string> {
         });
 }
 
+function deleteOldTarget() : Observable<Target[]> {
+    return readTargetIds()
+        .flatMap((targetIds : string[])=> {
+            return human.askForOldTarget(targetIds);
+        })
+        .flatMap((oldTarget : number)=> {
+            return readTargets()
+                .map((targets : Target[])=> {
+                    if (targets.length > 0) {
+                        targets.splice(oldTarget, 1);
+                    }
+                    return targets;
+                });
+        })
+        .flatMap((targets : Target[])=> {
+            return saveAny(targets, targetsPath);
+        });
+}
+
 function addNewTarget() : Observable<Target[]> {
     return readTargetIds()
         .flatMap((targetIds : string[])=> {
@@ -572,7 +591,12 @@ function main() {
                     return Observable.from(["done"]);
                 } else if (command === "+") {
                     return addNewTarget()
-                        .flatMap((targets : Target[])=> {
+                        .flatMap(()=> {
+                            return getSegmentCommandsUntilDone;
+                        });
+                } else if (command === "-") {
+                    return deleteOldTarget()
+                        .flatMap(()=> {
                             return getSegmentCommandsUntilDone;
                         });
                 } else {
