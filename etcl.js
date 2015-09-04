@@ -25,7 +25,7 @@
     var accountListPath = prefPath + "/accountList.json";
     var targetsPath = prefPath + "/targets.json";
     var assignmentsPath = prefPath + "/assignments.json";
-    var unassignedAssetIdSeparator = ":";
+    var assetDisplayIdSeparator = ":";
     var NoEntryError = (function () {
         function NoEntryError(message) {
             this.name = "NoEntryError";
@@ -234,6 +234,10 @@
                 typeCode: typeCode
             });
         };
+        Assets.getAssetDisplayId = function (assetId) {
+            var json = JSON.parse(assetId);
+            return json.symbol + assetDisplayIdSeparator + json.typeCode;
+        };
         Assets.prototype.getAssetList = function () {
             var assets = [];
             for (var key in this.assets) {
@@ -282,8 +286,8 @@
             this.unassignedAssetIds = [];
             for (var i = 0; i < assets.length; i++) {
                 var asset = assets[i];
-                this.unassignedAssetIds.push(asset.symbol + unassignedAssetIdSeparator +
-                    asset.typeCode);
+                var assetDisplayId = asset.symbol + assetDisplayIdSeparator + asset.typeCode;
+                this.unassignedAssetIds.push(assetDisplayId);
             }
             this.message = "No or invalid target for assets: " + this.unassignedAssetIds;
         }
@@ -400,7 +404,7 @@
         return readAssignments()
             .map(function (existingAssignments) {
             for (var unassignedAssetId in newAssignments) {
-                var symbolAndTypeCode = unassignedAssetId.split(unassignedAssetIdSeparator);
+                var symbolAndTypeCode = unassignedAssetId.split(assetDisplayIdSeparator);
                 var assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
                 existingAssignments[assetId] = newAssignments[unassignedAssetId];
             }
@@ -476,9 +480,7 @@
     }
     function deleteOldTarget() {
         return readTargetIds()
-            .flatMap(function (targetIds) {
-            return human.askForOldTarget(targetIds);
-        })
+            .flatMap(human.askForPositionInArray)
             .flatMap(function (oldTarget) {
             return readTargets()
                 .map(function (targets) {
@@ -511,6 +513,39 @@
             return saveAny(targets, targetsPath);
         });
     }
+    function formatAssignments(assignments) {
+        var lines = "";
+        for (var i = 0; i < assignments.length; i++) {
+            if (i > 0) {
+                lines += "\n";
+            }
+            var assignment = assignments[i];
+            var assetDisplayId = Assets.getAssetDisplayId(assignment.assetId);
+            lines += (i + 1).toString() + ". " + assetDisplayId + " - " + assignment.segmentId;
+        }
+        return lines;
+    }
+    function getAssignmentList() {
+        return readAssignments()
+            .map(function (assignments) {
+            var list = [];
+            for (var assetId in assignments) {
+                if (assignments.hasOwnProperty(assetId)) {
+                    list.push({
+                        assetId: assetId,
+                        segmentId: assignments[assetId]
+                    });
+                }
+            }
+            return list;
+        });
+    }
+    function getFormattedAssignments() {
+        return getAssignmentList()
+            .map(function (list) {
+            return formatAssignments(list);
+        });
+    }
     function main() {
         describeProgram("etcl", function () {
             describeCommand("assignment", function () {
@@ -531,29 +566,68 @@
                     console.error(e);
                 });
             });
+            describeCommand("assignments", function () {
+                var editAssigments = human.askForAddSubtractDoneCommand(getFormattedAssignments())
+                    .flatMap(function (command) {
+                    if (command === "=") {
+                        return rxts_1.Observable.from(["done"]);
+                    }
+                    else if (command === "-") {
+                        return getAssignmentList()
+                            .flatMap(human.askForPositionInArray)
+                            .flatMap(function (index) {
+                            return getAssignmentList()
+                                .map(function (assignments) {
+                                if (assignments.length > 0) {
+                                    assignments.splice(index, 1);
+                                }
+                                return assignments;
+                            });
+                        })
+                            .flatMap(function (assignments) {
+                            var object = {};
+                            for (var i = 0; i < assignments.length; i++) {
+                                var assignment = assignments[i];
+                                object[assignment.assetId] = assignment.segmentId;
+                            }
+                            return saveAny(object, assignmentsPath);
+                        })
+                            .flatMap(function () {
+                            return editAssigments;
+                        });
+                    }
+                    else {
+                        console.error(command + " not supported");
+                        return editAssigments;
+                    }
+                });
+                editAssigments
+                    .subscribe(console.log, console.error);
+            });
             describeCommand("segments", function () {
-                var getSegmentCommand = human.askForTargetOperation(getFormattedTargets());
-                var getSegmentCommandsUntilDone = getSegmentCommand.flatMap(function (command) {
+                var editSegments = human
+                    .askForAddSubtractDoneCommand(getFormattedTargets())
+                    .flatMap(function (command) {
                     if (command === "=") {
                         return rxts_1.Observable.from(["done"]);
                     }
                     else if (command === "+") {
                         return addNewTarget()
                             .flatMap(function () {
-                            return getSegmentCommandsUntilDone;
+                            return editSegments;
                         });
                     }
                     else if (command === "-") {
                         return deleteOldTarget()
                             .flatMap(function () {
-                            return getSegmentCommandsUntilDone;
+                            return editSegments;
                         });
                     }
                     else {
-                        return getSegmentCommandsUntilDone;
+                        return editSegments;
                     }
                 });
-                getSegmentCommandsUntilDone.subscribe(console.log, console.error);
+                editSegments.subscribe(console.log, console.error);
             });
             describeCommand("report", function () {
                 var progress = rxts_1.Observable.zip3(readTargets(), readAssignments(), getAssets())
@@ -571,7 +645,7 @@
                             .flatMap(function (assignments) {
                             return writeAssignments(assignments);
                         })
-                            .flatMap(function (assignments) {
+                            .flatMap(function () {
                             return progress;
                         });
                     }

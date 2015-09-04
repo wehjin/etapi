@@ -17,9 +17,8 @@
     var rxts_1 = require("rxts");
     var open = require("open");
     var prompt = require("prompt");
-    function askForOldTarget(existingNames) {
+    function askForPosition(count) {
         return rxts_1.Observable.create(function (subscriber) {
-            var count = existingNames.length;
             prompt.start();
             prompt.get({
                 properties: {
@@ -44,7 +43,10 @@
             });
         });
     }
-    exports.askForOldTarget = askForOldTarget;
+    function askForPositionInArray(choices) {
+        return askForPosition(choices.length);
+    }
+    exports.askForPositionInArray = askForPositionInArray;
     function askForNewTarget(existingNames) {
         return rxts_1.Observable.create(function (subscriber) {
             var count = existingNames.length;
@@ -101,8 +103,8 @@
         });
     }
     exports.askForNewTarget = askForNewTarget;
-    function askForTargetOperation(formattedTargets) {
-        return formattedTargets
+    function askForAddSubtractDoneCommand(promptLine) {
+        return promptLine
             .flatMap(function (formatted) {
             console.log(formatted);
             return rxts_1.Observable.create(function (subscriber) {
@@ -127,7 +129,7 @@
             });
         });
     }
-    exports.askForTargetOperation = askForTargetOperation;
+    exports.askForAddSubtractDoneCommand = askForAddSubtractDoneCommand;
     function askForAssignments(unassignedAssetIds, targetIds) {
         var chain;
         for (var i = 0; i < unassignedAssetIds.length; i++) {

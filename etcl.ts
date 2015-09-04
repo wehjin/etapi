@@ -23,7 +23,7 @@ var accessTokenPath = prefPath + "/accessToken.json";
 var accountListPath = prefPath + "/accountList.json";
 var targetsPath = prefPath + "/targets.json";
 var assignmentsPath = prefPath + "/assignments.json";
-var unassignedAssetIdSeparator = ":";
+var assetDisplayIdSeparator = ":";
 
 class NoEntryError implements Error {
     name : string = "NoEntryError";
@@ -254,6 +254,11 @@ class Assets {
         });
     }
 
+    static getAssetDisplayId(assetId : string) {
+        var json = JSON.parse(assetId);
+        return json.symbol + assetDisplayIdSeparator + json.typeCode;
+    }
+
     getAssetList() : Asset[] {
         var assets = [];
         for (var key in this.assets) {
@@ -305,8 +310,8 @@ class UnassignedAssetError implements Error {
     constructor(private assets : Asset[]) {
         for (var i = 0; i < assets.length; i++) {
             var asset = assets[i];
-            this.unassignedAssetIds.push(asset.symbol + unassignedAssetIdSeparator +
-                asset.typeCode);
+            var assetDisplayId = asset.symbol + assetDisplayIdSeparator + asset.typeCode;
+            this.unassignedAssetIds.push(assetDisplayId);
         }
         this.message = "No or invalid target for assets: " + this.unassignedAssetIds;
     }
@@ -444,7 +449,7 @@ function writeAssignments(newAssignments : {[unassigendAssetId:string]:string}) 
     return readAssignments()
         .map((existingAssignments)=> {
             for (var unassignedAssetId in newAssignments) {
-                var symbolAndTypeCode = unassignedAssetId.split(unassignedAssetIdSeparator);
+                var symbolAndTypeCode = unassignedAssetId.split(assetDisplayIdSeparator);
                 var assetId = Assets.getAssetId(symbolAndTypeCode[0], symbolAndTypeCode[1]);
                 existingAssignments[assetId] = newAssignments[unassignedAssetId];
             }
@@ -526,9 +531,7 @@ function getFormattedTargets() : Observable<string> {
 
 function deleteOldTarget() : Observable<Target[]> {
     return readTargetIds()
-        .flatMap((targetIds : string[])=> {
-            return human.askForOldTarget(targetIds);
-        })
+        .flatMap(human.askForPositionInArray)
         .flatMap((oldTarget : number)=> {
             return readTargets()
                 .map((targets : Target[])=> {
@@ -563,6 +566,47 @@ function addNewTarget() : Observable<Target[]> {
         });
 }
 
+interface Assignment {
+    assetId:string,
+    segmentId:string
+}
+
+function formatAssignments(assignments : Assignment[]) {
+    var lines : string = "";
+    for (var i = 0; i < assignments.length; i++) {
+        if (i > 0) {
+            lines += "\n";
+        }
+        var assignment = assignments[i];
+        var assetDisplayId = Assets.getAssetDisplayId(assignment.assetId);
+        lines += (i + 1).toString() + ". " + assetDisplayId + " - " + assignment.segmentId;
+    }
+    return lines;
+}
+
+function getAssignmentList() : Observable<Assignment[]> {
+    return readAssignments()
+        .map((assignments : Object)=> {
+            var list : Assignment[] = [];
+            for (var assetId in assignments) {
+                if (assignments.hasOwnProperty(assetId)) {
+                    list.push({
+                        assetId: assetId,
+                        segmentId: assignments[assetId]
+                    });
+                }
+            }
+            return list;
+        });
+}
+
+function getFormattedAssignments() : Observable<string> {
+    return getAssignmentList()
+        .map((list : Assignment[])=> {
+            return formatAssignments(list);
+        });
+}
+
 function main() {
     describeProgram("etcl", ()=> {
         describeCommand("assignment", ()=> {
@@ -584,26 +628,64 @@ function main() {
                 });
         });
 
+        describeCommand("assignments", ()=> {
+            var editAssigments = human.askForAddSubtractDoneCommand(getFormattedAssignments())
+                .flatMap((command : string)=> {
+                    if (command === "=") {
+                        return Observable.from(["done"]);
+                    } else if (command === "-") {
+                        return getAssignmentList()
+                            .flatMap(human.askForPositionInArray)
+                            .flatMap((index : number)=> {
+                                return getAssignmentList()
+                                    .map((assignments : Assignment[])=> {
+                                        if (assignments.length > 0) {
+                                            assignments.splice(index, 1);
+                                        }
+                                        return assignments;
+                                    });
+                            })
+                            .flatMap((assignments : Assignment[])=> {
+                                var object = {};
+                                for (var i = 0; i < assignments.length; i++) {
+                                    var assignment = assignments[i];
+                                    object[assignment.assetId] = assignment.segmentId;
+                                }
+                                return saveAny(object, assignmentsPath);
+                            })
+                            .flatMap(()=> {
+                                return editAssigments;
+                            });
+                    } else {
+                        console.error(command + " not supported");
+                        return editAssigments;
+                    }
+                });
+            editAssigments
+                .subscribe(console.log, console.error);
+        });
+
         describeCommand("segments", ()=> {
-            var getSegmentCommand = human.askForTargetOperation(getFormattedTargets());
-            var getSegmentCommandsUntilDone = getSegmentCommand.flatMap((command : string)=> {
-                if (command === "=") {
-                    return Observable.from(["done"]);
-                } else if (command === "+") {
-                    return addNewTarget()
-                        .flatMap(()=> {
-                            return getSegmentCommandsUntilDone;
-                        });
-                } else if (command === "-") {
-                    return deleteOldTarget()
-                        .flatMap(()=> {
-                            return getSegmentCommandsUntilDone;
-                        });
-                } else {
-                    return getSegmentCommandsUntilDone;
-                }
-            });
-            getSegmentCommandsUntilDone.subscribe(console.log, console.error);
+            var editSegments = human
+                .askForAddSubtractDoneCommand(getFormattedTargets())
+                .flatMap((command : string)=> {
+                    if (command === "=") {
+                        return Observable.from(["done"]);
+                    } else if (command === "+") {
+                        return addNewTarget()
+                            .flatMap(()=> {
+                                return editSegments;
+                            });
+                    } else if (command === "-") {
+                        return deleteOldTarget()
+                            .flatMap(()=> {
+                                return editSegments;
+                            });
+                    } else {
+                        return editSegments;
+                    }
+                });
+            editSegments.subscribe(console.log, console.error);
         });
 
         describeCommand("report", ()=> {
@@ -622,7 +704,7 @@ function main() {
                         .flatMap((assignments : {[unassigendAssetId:string]:string})=> {
                             return writeAssignments(assignments);
                         })
-                        .flatMap((assignments)=> {
+                        .flatMap(()=> {
                             return progress;
                         });
                 } else {

@@ -18,9 +18,8 @@ export interface UnassignedAssetsMap {
     [unassigendAssetId:string]:string
 }
 
-export function askForOldTarget(existingNames : string[]) : Observable<number> {
+function askForPosition(count : number) : Observable<number> {
     return Observable.create((subscriber : Subscriber<number>)=> {
-        var count = existingNames.length;
         prompt.start();
         prompt.get({
             properties: {
@@ -44,6 +43,10 @@ export function askForOldTarget(existingNames : string[]) : Observable<number> {
             subscriber.onCompleted();
         });
     });
+}
+
+export function askForPositionInArray(choices : any[]) : Observable<number> {
+    return askForPosition(choices.length);
 }
 
 export function askForNewTarget(existingNames : string[]) : Observable<[number,string,number]> {
@@ -102,8 +105,8 @@ export function askForNewTarget(existingNames : string[]) : Observable<[number,s
     });
 }
 
-export function askForTargetOperation(formattedTargets : Observable<string>) : Observable<string> {
-    return formattedTargets
+export function askForAddSubtractDoneCommand(promptLine : Observable<string>) : Observable<string> {
+    return promptLine
         .flatMap((formatted : string)=> {
             console.log(formatted);
             return Observable.create((subscriber : Subscriber<string>)=> {
