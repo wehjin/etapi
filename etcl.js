@@ -555,16 +555,17 @@
             return formatAssignments(list);
         });
     }
+    function fromAssetToAssetDisplay(asset) {
+        return Assets.getAssetDisplayId(asset.assetId) + "  $ " + asset.marketValue.toFixed(2);
+    }
     function main() {
         describeProgram("etcl", function () {
             describeCommand("assets", function () {
                 getAssets()
                     .flatMap(Assets.fromAssetsToAssetList)
                     .flatMap(rxts_1.Observable.from)
-                    .map(function (asset) {
-                    var assetDisplayId = Assets.getAssetDisplayId(asset.assetId);
-                    return assetDisplayId + "  $ " + asset.marketValue.toFixed(2);
-                })
+                    .map(fromAssetToAssetDisplay)
+                    .endWith("")
                     .subscribe(console.log, console.error);
             });
             describeCommand("assignments", function () {

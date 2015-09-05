@@ -618,6 +618,10 @@ function getFormattedAssignments() : Observable<string> {
         });
 }
 
+function fromAssetToAssetDisplay(asset : Asset) : string {
+    return Assets.getAssetDisplayId(asset.assetId) + "  $ " + asset.marketValue.toFixed(2);
+}
+
 function main() {
     describeProgram("etcl", ()=> {
 
@@ -625,10 +629,8 @@ function main() {
             getAssets()
                 .flatMap(Assets.fromAssetsToAssetList)
                 .flatMap(Observable.from)
-                .map((asset : Asset)=> {
-                    var assetDisplayId = Assets.getAssetDisplayId(asset.assetId);
-                    return assetDisplayId + "  $ " + asset.marketValue.toFixed(2);
-                })
+                .map(fromAssetToAssetDisplay)
+                .endWith("")
                 .subscribe(console.log, console.error);
         });
 
