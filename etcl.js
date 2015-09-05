@@ -238,12 +238,21 @@
             var json = JSON.parse(assetId);
             return json.symbol + assetDisplayIdSeparator + json.typeCode;
         };
-        Assets.prototype.getAssetList = function () {
-            var assets = [];
-            for (var key in this.assets) {
-                assets.push(this.assets[key]);
+        Assets.getAssetListFromAssets = function (assets) {
+            var assetList = [];
+            var assetsMap = assets.assets;
+            for (var assetId in assetsMap) {
+                if (assetsMap.hasOwnProperty(assetId)) {
+                    assetList.push(assetsMap[assetId]);
+                }
             }
-            return assets;
+            return assetList;
+        };
+        Assets.fromAssetsToAssetList = function (assets) {
+            return rxts_1.Observable.from([Assets.getAssetListFromAssets(assets)]);
+        };
+        Assets.prototype.getAssetList = function () {
+            return Assets.getAssetListFromAssets(this);
         };
         Assets.prototype.addPosition = function (position) {
             var productId = position['productId'];
@@ -565,6 +574,16 @@
                 }, function (e) {
                     console.error(e);
                 });
+            });
+            describeCommand("assets", function () {
+                getAssets()
+                    .flatMap(Assets.fromAssetsToAssetList)
+                    .flatMap(rxts_1.Observable.from)
+                    .map(function (asset) {
+                    var assetDisplayId = Assets.getAssetDisplayId(asset.assetId);
+                    return assetDisplayId + "  $ " + asset.marketValue.toFixed(2);
+                })
+                    .subscribe(console.log, console.error);
             });
             describeCommand("assignments", function () {
                 var editAssigments = human.askForAddSubtractDoneCommand(getFormattedAssignments())

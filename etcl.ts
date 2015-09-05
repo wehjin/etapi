@@ -259,12 +259,23 @@ class Assets {
         return json.symbol + assetDisplayIdSeparator + json.typeCode;
     }
 
-    getAssetList() : Asset[] {
-        var assets = [];
-        for (var key in this.assets) {
-            assets.push(this.assets[key]);
+    static getAssetListFromAssets(assets : Assets) : Asset[] {
+        var assetList : Asset[] = [];
+        var assetsMap = assets.assets;
+        for (var assetId in assetsMap) {
+            if (assetsMap.hasOwnProperty(assetId)) {
+                assetList.push(assetsMap[assetId]);
+            }
         }
-        return assets;
+        return assetList;
+    }
+
+    static fromAssetsToAssetList(assets : Assets) : Observable<Asset[]> {
+        return Observable.from([Assets.getAssetListFromAssets(assets)]);
+    }
+
+    getAssetList() : Asset[] {
+        return Assets.getAssetListFromAssets(this);
     }
 
     private addPosition(position : Object) {
@@ -626,6 +637,17 @@ function main() {
                 }, (e)=> {
                     console.error(e);
                 });
+        });
+
+        describeCommand("assets", ()=> {
+            getAssets()
+                .flatMap(Assets.fromAssetsToAssetList)
+                .flatMap(Observable.from)
+                .map((asset : Asset)=> {
+                    var assetDisplayId = Assets.getAssetDisplayId(asset.assetId);
+                    return assetDisplayId + "  $ " + asset.marketValue.toFixed(2);
+                })
+                .subscribe(console.log, console.error);
         });
 
         describeCommand("assignments", ()=> {
