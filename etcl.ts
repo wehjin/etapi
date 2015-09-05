@@ -620,24 +620,6 @@ function getFormattedAssignments() : Observable<string> {
 
 function main() {
     describeProgram("etcl", ()=> {
-        describeCommand("assignment", ()=> {
-            var symbolAndTypeCode = "GOOG:EQ";
-            var targetId = "stocks";
-            describeArgument("assetId", symbolAndTypeCode, (arg)=> {
-                symbolAndTypeCode = arg;
-            });
-            describeArgument("targetId", targetId, (arg)=> {
-                targetId = arg;
-            });
-            var assignments : {[unassigendAssetId:string]:string} = {};
-            assignments[symbolAndTypeCode] = targetId;
-            writeAssignments(assignments)
-                .subscribe((assignments)=> {
-                    console.log(assignments);
-                }, (e)=> {
-                    console.error(e);
-                });
-        });
 
         describeCommand("assets", ()=> {
             getAssets()
@@ -651,7 +633,7 @@ function main() {
         });
 
         describeCommand("assignments", ()=> {
-            var editAssigments = human.askForAddSubtractDoneCommand(getFormattedAssignments())
+            var editAssignments = human.askForAddSubtractDoneCommand(getFormattedAssignments())
                 .flatMap((command : string)=> {
                     if (command === "=") {
                         return Observable.from(["done"]);
@@ -676,14 +658,14 @@ function main() {
                                 return saveAny(object, assignmentsPath);
                             })
                             .flatMap(()=> {
-                                return editAssigments;
+                                return editAssignments;
                             });
                     } else {
                         console.error(command + " not supported");
-                        return editAssigments;
+                        return editAssignments;
                     }
                 });
-            editAssigments
+            editAssignments
                 .subscribe(console.log, console.error);
         });
 

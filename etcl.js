@@ -557,24 +557,6 @@
     }
     function main() {
         describeProgram("etcl", function () {
-            describeCommand("assignment", function () {
-                var symbolAndTypeCode = "GOOG:EQ";
-                var targetId = "stocks";
-                describeArgument("assetId", symbolAndTypeCode, function (arg) {
-                    symbolAndTypeCode = arg;
-                });
-                describeArgument("targetId", targetId, function (arg) {
-                    targetId = arg;
-                });
-                var assignments = {};
-                assignments[symbolAndTypeCode] = targetId;
-                writeAssignments(assignments)
-                    .subscribe(function (assignments) {
-                    console.log(assignments);
-                }, function (e) {
-                    console.error(e);
-                });
-            });
             describeCommand("assets", function () {
                 getAssets()
                     .flatMap(Assets.fromAssetsToAssetList)
@@ -586,7 +568,7 @@
                     .subscribe(console.log, console.error);
             });
             describeCommand("assignments", function () {
-                var editAssigments = human.askForAddSubtractDoneCommand(getFormattedAssignments())
+                var editAssignments = human.askForAddSubtractDoneCommand(getFormattedAssignments())
                     .flatMap(function (command) {
                     if (command === "=") {
                         return rxts_1.Observable.from(["done"]);
@@ -612,15 +594,15 @@
                             return saveAny(object, assignmentsPath);
                         })
                             .flatMap(function () {
-                            return editAssigments;
+                            return editAssignments;
                         });
                     }
                     else {
                         console.error(command + " not supported");
-                        return editAssigments;
+                        return editAssignments;
                     }
                 });
-                editAssigments
+                editAssignments
                     .subscribe(console.log, console.error);
             });
             describeCommand("segments", function () {
