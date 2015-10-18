@@ -41,14 +41,11 @@
             return data.saveJson(accessToken, accessTokenPath);
         });
     }
-    function readAccessToken(service) {
+    function readOrFetchAccessToken(service) {
         return data.readJson(accessTokenPath)
             .map(function (json) {
             return new et_1.AccessToken(json['token'], json['secret'], json['flags'], service);
-        });
-    }
-    function readOrFetchAccessToken(service) {
-        return readAccessToken(service)
+        })
             .onErrorResumeNext(function (e) {
             if (e instanceof data.NoEntryError) {
                 return fetchAccessToken(service);
@@ -84,17 +81,14 @@
             return data.saveJson(accountList, accountListPath);
         });
     }
-    function readAccountList(accessToken) {
+    function readOrFetchAccountList(accessToken) {
         return accessToken
             .flatMap(function (accessToken) {
             return data.readJson(accountListPath)
                 .map(function (jsonAccountList) {
                 return et_1.AccountList.fromJson(jsonAccountList, accessToken);
             });
-        });
-    }
-    function readOrFetchAccountList(accessToken) {
-        return readAccountList(accessToken)
+        })
             .onErrorResumeNext(function (e) {
             if (e instanceof data.NoEntryError) {
                 return fetchAccountList(accessToken);

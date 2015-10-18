@@ -42,15 +42,11 @@ function fetchAccessToken(service : Service) : Observable<AccessToken> {
         });
 }
 
-function readAccessToken(service : Service) : Observable<AccessToken> {
+function readOrFetchAccessToken(service : Service) : Observable<AccessToken> {
     return data.readJson(accessTokenPath)
         .map((json : Object)=> {
             return new AccessToken(json['token'], json['secret'], json['flags'], service);
-        });
-}
-
-function readOrFetchAccessToken(service : Service) : Observable<AccessToken> {
-    return readAccessToken(service)
+        })
         .onErrorResumeNext((e)=> {
             if (e instanceof data.NoEntryError) {
                 return fetchAccessToken(service);
@@ -86,18 +82,14 @@ function fetchAccountList(accessToken : Observable<AccessToken>) : Observable<Ac
         });
 }
 
-function readAccountList(accessToken : Observable<AccessToken>) : Observable<AccountList> {
+function readOrFetchAccountList(accessToken : Observable<AccessToken>) : Observable<AccountList> {
     return accessToken
         .flatMap((accessToken : AccessToken)=> {
             return data.readJson(accountListPath)
                 .map((jsonAccountList : Object)=> {
                     return AccountList.fromJson(jsonAccountList, accessToken);
                 });
-        });
-}
-
-function readOrFetchAccountList(accessToken : Observable<AccessToken>) : Observable<AccountList> {
-    return readAccountList(accessToken)
+        })
         .onErrorResumeNext((e)=> {
             if (e instanceof data.NoEntryError) {
                 return fetchAccountList(accessToken);
