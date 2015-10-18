@@ -9,15 +9,15 @@
     else if (typeof define === 'function' && define.amd) {
         define(deps, factory);
     }
-})(["require", "exports", "rxts", "et", "fs", "./etcl-human"], function (require, exports) {
+})(["require", "exports", "rxts", "et", "./etcl-human", "./etcl-data"], function (require, exports) {
     ///<reference path="node_modules/rxts/rxts.d.ts"/>
     ///<reference path="./typings/node/node.d.ts" />
     ///<reference path="./typings/open/open.d.ts" />
     ///<reference path="./typings/prompt/prompt.d.ts" />
     var rxts_1 = require("rxts");
     var et_1 = require("et");
-    var fs = require("fs");
     var human = require("./etcl-human");
+    var data = require("./etcl-data");
     var homePath = process.env['HOME'];
     var prefPath = homePath + '/.etcl';
     var setupPath = prefPath + '/setup.json';
@@ -26,84 +26,6 @@
     var targetsPath = prefPath + "/targets.json";
     var assignmentsPath = prefPath + "/assignments.json";
     var assetDisplayIdSeparator = ":";
-    var NoEntryError = (function () {
-        function NoEntryError(message) {
-            this.name = "NoEntryError";
-            this.message = message;
-        }
-        return NoEntryError;
-    })();
-    function readJson(filepath) {
-        return rxts_1.Observable.create(function (subscriber) {
-            fs.readFile(filepath, function (err, data) {
-                if (err) {
-                    if (err['code'] === 'ENOENT') {
-                        subscriber.onError(new NoEntryError(JSON.stringify(err)));
-                    }
-                    else {
-                        subscriber.onError(err);
-                    }
-                    return;
-                }
-                subscriber.onNext(data.toString('utf8'));
-                subscriber.onCompleted();
-            });
-        }).map(function (s) {
-            return JSON.parse(s);
-        });
-    }
-    function saveAny(toSave, filePath) {
-        return rxts_1.Observable.create(function (subscriber) {
-            var subscription = new rxts_1.BooleanSubscription();
-            fs.writeFile(filePath, JSON.stringify(toSave), {
-                mode: 0600
-            }, function (err) {
-                if (subscription.isUnsubscribed()) {
-                    return;
-                }
-                if (err) {
-                    subscriber.onError(err);
-                    return;
-                }
-                subscriber.onNext(toSave);
-                subscriber.onCompleted();
-            });
-        });
-    }
-    function saveJson(jsonable, filePath) {
-        return rxts_1.Observable.create(function (subscriber) {
-            var subscription = new rxts_1.BooleanSubscription();
-            fs.writeFile(filePath, jsonable.toJson(), {
-                mode: 0600
-            }, function (err) {
-                if (subscription.isUnsubscribed()) {
-                    return;
-                }
-                if (err) {
-                    subscriber.onError(err);
-                    return;
-                }
-                subscriber.onNext(jsonable);
-                subscriber.onCompleted();
-            });
-        });
-    }
-    function deleteJson(path) {
-        return rxts_1.Observable.create(function (subscriber) {
-            var subscription = new rxts_1.BooleanSubscription();
-            fs.unlink(path, function (err) {
-                if (subscription.isUnsubscribed()) {
-                    return;
-                }
-                if (err) {
-                    subscriber.onError(err);
-                    return;
-                }
-                subscriber.onNext(true);
-                subscriber.onCompleted();
-            });
-        });
-    }
     function fetchAccessToken(service) {
         return service.fetchRequestToken()
             .flatMap(function (requestToken) {
@@ -116,11 +38,11 @@
             return credentials.getAccessToken();
         })
             .flatMap(function (accessToken) {
-            return saveJson(accessToken, accessTokenPath);
+            return data.saveJson(accessToken, accessTokenPath);
         });
     }
     function readAccessToken(service) {
-        return readJson(accessTokenPath)
+        return data.readJson(accessTokenPath)
             .map(function (json) {
             return new et_1.AccessToken(json['token'], json['secret'], json['flags'], service);
         });
@@ -128,7 +50,7 @@
     function readOrFetchAccessToken(service) {
         return readAccessToken(service)
             .onErrorResumeNext(function (e) {
-            if (e instanceof NoEntryError) {
+            if (e instanceof data.NoEntryError) {
                 return fetchAccessToken(service);
             }
             else {
@@ -144,7 +66,7 @@
         return fetchBaseAccountList
             .onErrorResumeNext(function (e) {
             if (e instanceof et_1.TokenError) {
-                return deleteJson(accessTokenPath).flatMap(function () {
+                return data.deleteJson(accessTokenPath).flatMap(function () {
                     return fetchBaseAccountList;
                 });
             }
@@ -159,13 +81,13 @@
             return accountList.refreshPositions();
         })
             .flatMap(function (accountList) {
-            return saveJson(accountList, accountListPath);
+            return data.saveJson(accountList, accountListPath);
         });
     }
     function readAccountList(accessToken) {
         return accessToken
             .flatMap(function (accessToken) {
-            return readJson(accountListPath)
+            return data.readJson(accountListPath)
                 .map(function (jsonAccountList) {
                 return et_1.AccountList.fromJson(jsonAccountList, accessToken);
             });
@@ -174,7 +96,7 @@
     function readOrFetchAccountList(accessToken) {
         return readAccountList(accessToken)
             .onErrorResumeNext(function (e) {
-            if (e instanceof NoEntryError) {
+            if (e instanceof data.NoEntryError) {
                 return fetchAccountList(accessToken);
             }
             else {
@@ -375,7 +297,7 @@
         return Progress;
     })();
     function getAssets() {
-        var accessToken = readJson(setupPath)
+        var accessToken = data.readJson(setupPath)
             .map(function (setup) {
             return new et_1.Service(setup);
         })
@@ -388,7 +310,7 @@
         });
     }
     function readTargets() {
-        return readJson(targetsPath)
+        return data.readJson(targetsPath)
             .map(function (json) {
             return json;
         });
@@ -404,9 +326,9 @@
         });
     }
     function readAssignments() {
-        return readJson(assignmentsPath)
+        return data.readJson(assignmentsPath)
             .onErrorResumeNext(function (e) {
-            return (e instanceof NoEntryError) ? rxts_1.Observable.from([{}]) : rxts_1.Observable.error(e);
+            return (e instanceof data.NoEntryError) ? rxts_1.Observable.from([{}]) : rxts_1.Observable.error(e);
         });
     }
     function writeAssignments(newAssignments) {
@@ -420,7 +342,7 @@
             return existingAssignments;
         })
             .flatMap(function (assignments) {
-            return saveAny(assignments, assignmentsPath);
+            return data.saveAny(assignments, assignmentsPath);
         });
     }
     function formatTarget(target) {
@@ -500,7 +422,7 @@
             });
         })
             .flatMap(function (targets) {
-            return saveAny(targets, targetsPath);
+            return data.saveAny(targets, targetsPath);
         });
     }
     function addNewTarget() {
@@ -519,7 +441,7 @@
             });
         })
             .flatMap(function (targets) {
-            return saveAny(targets, targetsPath);
+            return data.saveAny(targets, targetsPath);
         });
     }
     function formatAssignments(assignments) {
@@ -592,7 +514,7 @@
                                 var assignment = assignments[i];
                                 object[assignment.assetId] = assignment.segmentId;
                             }
-                            return saveAny(object, assignmentsPath);
+                            return data.saveAny(object, assignmentsPath);
                         })
                             .flatMap(function () {
                             return editAssignments;

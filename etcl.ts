@@ -15,6 +15,7 @@ import fs = require("fs");
 import open = require("open");
 import prompt = require("prompt");
 import human = require("./etcl-human");
+import * as data from "./etcl-data";
 
 var homePath = process.env['HOME'];
 var prefPath = homePath + '/.etcl';
@@ -24,89 +25,6 @@ var accountListPath = prefPath + "/accountList.json";
 var targetsPath = prefPath + "/targets.json";
 var assignmentsPath = prefPath + "/assignments.json";
 var assetDisplayIdSeparator = ":";
-
-class NoEntryError implements Error {
-    name : string = "NoEntryError";
-    message : string;
-
-    constructor(message : string) {
-        this.message = message;
-    }
-}
-
-function readJson(filepath : string) : Observable<any> {
-    return Observable.create((subscriber : Subscriber<string>)=> {
-        fs.readFile(filepath, function (err, data) {
-            if (err) {
-                if (err['code'] === 'ENOENT') {
-                    subscriber.onError(new NoEntryError(JSON.stringify(err)));
-                } else {
-                    subscriber.onError(err);
-                }
-                return;
-            }
-            subscriber.onNext(data.toString('utf8'));
-            subscriber.onCompleted();
-        });
-    }).map((s : string)=> {
-        return JSON.parse(s);
-    });
-}
-
-function saveAny<T>(toSave : T, filePath : string) : Observable<T> {
-    return Observable.create((subscriber : Subscriber<Object>)=> {
-        var subscription = new BooleanSubscription();
-        fs.writeFile(filePath, JSON.stringify(toSave), {
-            mode: 0600
-        }, (err : any)=> {
-            if (subscription.isUnsubscribed()) {
-                return;
-            }
-            if (err) {
-                subscriber.onError(err);
-                return;
-            }
-            subscriber.onNext(toSave);
-            subscriber.onCompleted();
-        });
-    });
-}
-
-function saveJson<T extends Jsonable>(jsonable : T, filePath : string) : Observable<T> {
-    return Observable.create((subscriber : Subscriber<Object>)=> {
-        var subscription = new BooleanSubscription();
-        fs.writeFile(filePath, jsonable.toJson(), {
-            mode: 0600
-        }, (err : any)=> {
-            if (subscription.isUnsubscribed()) {
-                return;
-            }
-            if (err) {
-                subscriber.onError(err);
-                return;
-            }
-            subscriber.onNext(jsonable);
-            subscriber.onCompleted();
-        });
-    });
-}
-
-function deleteJson(path) {
-    return Observable.create((subscriber : Subscriber<boolean>)=> {
-        var subscription = new BooleanSubscription();
-        fs.unlink(path, (err : any)=> {
-            if (subscription.isUnsubscribed()) {
-                return;
-            }
-            if (err) {
-                subscriber.onError(err);
-                return;
-            }
-            subscriber.onNext(true);
-            subscriber.onCompleted();
-        });
-    });
-}
 
 function fetchAccessToken(service : Service) : Observable<AccessToken> {
     return service.fetchRequestToken()
@@ -120,12 +38,12 @@ function fetchAccessToken(service : Service) : Observable<AccessToken> {
             return credentials.getAccessToken();
         })
         .flatMap((accessToken : AccessToken) : Observable<AccessToken>=> {
-            return saveJson(accessToken, accessTokenPath);
+            return data.saveJson(accessToken, accessTokenPath);
         });
 }
 
 function readAccessToken(service : Service) : Observable<AccessToken> {
-    return readJson(accessTokenPath)
+    return data.readJson(accessTokenPath)
         .map((json : Object)=> {
             return new AccessToken(json['token'], json['secret'], json['flags'], service);
         });
@@ -134,7 +52,7 @@ function readAccessToken(service : Service) : Observable<AccessToken> {
 function readOrFetchAccessToken(service : Service) : Observable<AccessToken> {
     return readAccessToken(service)
         .onErrorResumeNext((e)=> {
-            if (e instanceof NoEntryError) {
+            if (e instanceof data.NoEntryError) {
                 return fetchAccessToken(service);
             } else {
                 return Observable.error(e);
@@ -150,7 +68,7 @@ function fetchAccountList(accessToken : Observable<AccessToken>) : Observable<Ac
     return fetchBaseAccountList
         .onErrorResumeNext((e)=> {
             if (e instanceof TokenError) {
-                return deleteJson(accessTokenPath).flatMap(()=> {
+                return data.deleteJson(accessTokenPath).flatMap(()=> {
                     return fetchBaseAccountList;
                 })
             } else {
@@ -164,14 +82,14 @@ function fetchAccountList(accessToken : Observable<AccessToken>) : Observable<Ac
             return accountList.refreshPositions();
         })
         .flatMap((accountList : AccountList)=> {
-            return saveJson(accountList, accountListPath)
+            return data.saveJson(accountList, accountListPath)
         });
 }
 
 function readAccountList(accessToken : Observable<AccessToken>) : Observable<AccountList> {
     return accessToken
         .flatMap((accessToken : AccessToken)=> {
-            return readJson(accountListPath)
+            return data.readJson(accountListPath)
                 .map((jsonAccountList : Object)=> {
                     return AccountList.fromJson(jsonAccountList, accessToken);
                 });
@@ -181,7 +99,7 @@ function readAccountList(accessToken : Observable<AccessToken>) : Observable<Acc
 function readOrFetchAccountList(accessToken : Observable<AccessToken>) : Observable<AccountList> {
     return readAccountList(accessToken)
         .onErrorResumeNext((e)=> {
-            if (e instanceof NoEntryError) {
+            if (e instanceof data.NoEntryError) {
                 return fetchAccountList(accessToken);
             } else {
                 return Observable.error(e);
@@ -418,7 +336,7 @@ class Progress {
 }
 
 function getAssets() : Observable<Assets> {
-    var accessToken = readJson(setupPath)
+    var accessToken = data.readJson(setupPath)
         .map((setup : Object) : Service => {
             return new Service(setup);
         })
@@ -432,7 +350,7 @@ function getAssets() : Observable<Assets> {
 }
 
 function readTargets() : Observable<Target[]> {
-    return readJson(targetsPath)
+    return data.readJson(targetsPath)
         .map((json) : Target[]=> {
             return json;
         });
@@ -450,9 +368,9 @@ function readTargetIds() : Observable<string[]> {
 }
 
 function readAssignments() : Observable<Object> {
-    return readJson(assignmentsPath)
+    return data.readJson(assignmentsPath)
         .onErrorResumeNext((e)=> {
-            return (e instanceof NoEntryError) ? Observable.from([{}]) : Observable.error(e);
+            return (e instanceof data.NoEntryError) ? Observable.from([{}]) : Observable.error(e);
         });
 }
 
@@ -467,7 +385,7 @@ function writeAssignments(newAssignments : {[unassigendAssetId:string]:string}) 
             return existingAssignments;
         })
         .flatMap((assignments) => {
-            return saveAny(assignments, assignmentsPath);
+            return data.saveAny(assignments, assignmentsPath);
         });
 }
 
@@ -553,7 +471,7 @@ function deleteOldTarget() : Observable<Target[]> {
                 });
         })
         .flatMap((targets : Target[])=> {
-            return saveAny(targets, targetsPath);
+            return data.saveAny(targets, targetsPath);
         });
 }
 
@@ -573,7 +491,7 @@ function addNewTarget() : Observable<Target[]> {
                 });
         })
         .flatMap((targets : Target[])=> {
-            return saveAny(targets, targetsPath);
+            return data.saveAny(targets, targetsPath);
         });
 }
 
@@ -657,7 +575,7 @@ function main() {
                                     var assignment = assignments[i];
                                     object[assignment.assetId] = assignment.segmentId;
                                 }
-                                return saveAny(object, assignmentsPath);
+                                return data.saveAny(object, assignmentsPath);
                             })
                             .flatMap(()=> {
                                 return editAssignments;
