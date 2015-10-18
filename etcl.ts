@@ -26,6 +26,13 @@ var targetsPath = prefPath + "/targets.json";
 var assignmentsPath = prefPath + "/assignments.json";
 var assetDisplayIdSeparator = ":";
 
+function getService() : Observable<Service> {
+    return data.readJson(setupPath)
+        .map((setup : Object) : Service => {
+            return new Service(setup);
+        });
+}
+
 function fetchAccessToken(service : Service) : Observable<AccessToken> {
     return service.fetchRequestToken()
         .flatMap((requestToken : OauthRequestToken)=> {
@@ -328,10 +335,7 @@ class Progress {
 }
 
 function getAssets() : Observable<Assets> {
-    var accessToken = data.readJson(setupPath)
-        .map((setup : Object) : Service => {
-            return new Service(setup);
-        })
+    var accessToken = getService()
         .flatMap((service : Service) : Observable<AccessToken>=> {
             return readOrFetchAccessToken(service);
         });
@@ -532,6 +536,12 @@ function fromAssetToAssetDisplay(asset : Asset) : string {
     return Assets.getAssetDisplayId(asset.assetId) + "  $ " + asset.marketValue.toFixed(2);
 }
 
+var getAccountList = function () {
+    return getService().flatMap((service : Service)=> {
+        return readOrFetchAccountList(readOrFetchAccessToken(service));
+    });
+};
+
 function main() {
     describeProgram("etcl", ()=> {
 
@@ -542,6 +552,21 @@ function main() {
                 .map(fromAssetToAssetDisplay)
                 .endWith("")
                 .subscribe(console.log, console.error);
+        });
+
+        describeCommand("accounts", ()=> {
+            getAccountList().subscribe(console.log, console.error);
+        });
+
+        describeCommand("net", ()=> {
+            getAccountList().map((accountList : Object)=> {
+                var accumulated : number = 0;
+                accountList["accounts"].forEach((account : Object)=> {
+                    var more = parseFloat(account["netAccountValue"]);
+                    accumulated += more;
+                });
+                return accumulated;
+            }).subscribe(console.log, console.error);
         });
 
         describeCommand("assignments", ()=> {

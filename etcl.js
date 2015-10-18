@@ -26,6 +26,12 @@
     var targetsPath = prefPath + "/targets.json";
     var assignmentsPath = prefPath + "/assignments.json";
     var assetDisplayIdSeparator = ":";
+    function getService() {
+        return data.readJson(setupPath)
+            .map(function (setup) {
+            return new et_1.Service(setup);
+        });
+    }
     function fetchAccessToken(service) {
         return service.fetchRequestToken()
             .flatMap(function (requestToken) {
@@ -291,10 +297,7 @@
         return Progress;
     })();
     function getAssets() {
-        var accessToken = data.readJson(setupPath)
-            .map(function (setup) {
-            return new et_1.Service(setup);
-        })
+        var accessToken = getService()
             .flatMap(function (service) {
             return readOrFetchAccessToken(service);
         });
@@ -474,6 +477,11 @@
     function fromAssetToAssetDisplay(asset) {
         return Assets.getAssetDisplayId(asset.assetId) + "  $ " + asset.marketValue.toFixed(2);
     }
+    var getAccountList = function () {
+        return getService().flatMap(function (service) {
+            return readOrFetchAccountList(readOrFetchAccessToken(service));
+        });
+    };
     function main() {
         describeProgram("etcl", function () {
             describeCommand("assets", function () {
@@ -483,6 +491,19 @@
                     .map(fromAssetToAssetDisplay)
                     .endWith("")
                     .subscribe(console.log, console.error);
+            });
+            describeCommand("accounts", function () {
+                getAccountList().subscribe(console.log, console.error);
+            });
+            describeCommand("net", function () {
+                getAccountList().map(function (accountList) {
+                    var accumulated = 0;
+                    accountList["accounts"].forEach(function (account) {
+                        var more = parseFloat(account["netAccountValue"]);
+                        accumulated += more;
+                    });
+                    return accumulated;
+                }).subscribe(console.log, console.error);
             });
             describeCommand("assignments", function () {
                 var editAssignments = human.askForAddSubtractDoneCommand(getFormattedAssignments())
